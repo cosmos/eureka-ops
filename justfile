@@ -1,0 +1,78 @@
+import 'safe.just'
+import 'deploy.just'
+import 'decode.just'
+import 'upgrade.just'
+
+default:
+    just -f {{justfile()}} --list
+
+set dotenv-load
+set dotenv-filename := ".eureka-env"
+
+ledger := "false"
+export broadcast := "false"
+private_key := ""
+debug := "false"
+
+ledger_flag := if ledger == "true" { " --ledger" } else { "" }
+broadcast_flag := if broadcast == "true" { " --broadcast" } else { "" }
+private_key_flag := if private_key != "" { " --private-key " + private_key } else { "" }
+debug_flag := if debug == "true" { " -vvvvv" } else { "" }
+
+forge_binary := "forge"
+forge_flags := ledger_flag + broadcast_flag + private_key_flag + debug_flag
+forge_command := forge_binary
+
+cast_command := "cast"
+just := "just -f " + justfile()
+
+[group('operations')]
+[doc('Creates a new operation doc')]
+new-operation operation environment chain:
+    #!/bin/bash
+    set -euo pipefail
+
+    if ! test -f runbooks/{{operation}}.md; then
+        echo "{{operation}} is not a valid operation"; exit 1;
+    fi
+
+    operation_name="{{ datetime('%Y-%m-%d') }}-{{operation}}"
+    dir="runbooks/operations/$operation_name"
+    git checkout main
+    
+    # git pull origin main
+    git checkout -b operations/$operation_name
+
+    mkdir $dir
+    cp runbooks/{{operation}}.md $dir/RUNBOOK.md
+    git add $dir/RUNBOOK.md
+
+    rm -f .eureka-env
+    echo "EUREKA_ENVIRONMENT={{environment}}" >> .eureka-env
+    echo "EUREKA_CHAIN={{chain}}" >> .eureka-env
+
+    git commit -m "chore: start operation $operation_name"
+    # git push origin operations/$operation_name
+    bun install
+
+[group('operations')]
+join-operation branch:
+    git fetch
+    git checkout {{branch}}
+
+[group('operations')]
+update-operation:
+    git fetch
+    git pull origin $(git rev-parse --abbrev-ref HEAD)
+
+[group('verify')]
+[doc('Verifies contract deployments for <chain> in <environment>')]
+verify-deployment $environment $chain: (_verify-deployment environment chain `jq -re '.rpc_url' deployments/$environment/$chain.json`)
+_verify-deployment environment chain $FOUNDRY_ETH_RPC_URL:
+    #!/bin/bash
+    set -eou pipefail
+    export VERIFY_ONLY=true
+    export DEPLOYMENT_ENV={{environment}}
+    {{forge_command}} script scripts/deployments/DeployProxiedICS26Router.sol
+    {{forge_command}} script scripts/deployments/DeployProxiedICS20Transfer.sol
+    {{forge_command}} script scripts/deployments/DeploySP1ICS07Tendermint.sol

@@ -1,0 +1,37 @@
+{
+  "name": "@cosmos/eureka-ops",
+  "description": "Eureka operations runbooks",
+  "version": "1.0.0",
+  "author": {
+    "name": "Cosmos",
+    "url": "https://github.com/cosmos"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.2.0",
+    "@openzeppelin/contracts-upgradeable": "^5.2.0",
+    "@srdtrk/solidity-ibc-eureka": "../solidity-ibc-eureka",
+    "@uniswap/permit2": "github:Uniswap/permit2"
+  },
+  "devDependencies": {
+    "sp1-contracts": "github:succinctlabs/sp1-contracts#v4.0.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.6",
+    "solhint": "^5.0.5",
+    "@defi-wonderland/natspec-smells": "^1.1.6"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "forge",
+    "foundry",
+    "smart-contracts",
+    "solidity",
+    "template"
+  ],
+  "private": true,
+  "scripts": {
+    "lint:sol": "forge fmt --check && bun solhint -w 0 '{scripts,contracts,test}/**/*.sol'",
+    "lint:natspec": "bun natspec-smells --include 'contracts/**/*.sol'",
+    "test:coverage": "forge coverage",
+    "test:coverage:report": "forge coverage --report lcov && genhtml lcov.info --branch-coverage --output-dir coverage"
+  }
+}
