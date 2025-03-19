@@ -82,3 +82,41 @@ schedule-ibcerc20-upgrade-params: (_schedule-beacon-upgrade-params upgrade_ibc_e
 execute-escrow-upgrade-params: (_execute-beacon-upgrade-params upgrade_escrow_sig "escrow")
 [group('upgrade-params')]
 schedule-escrow-upgrade-params: (_schedule-beacon-upgrade-params upgrade_escrow_sig "escrow")
+
+[group('upgrade-params')]
+schedule-light-client-upgrade-params oldClientIndex newClientIndex:
+  #!/bin/bash
+  set -euo pipefail
+  deployment=$(cat deployments/{{environment}}/{{chain}}.json)
+  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
+  oldClientId=$(echo $deployment | jq -re ".light_clients[\"{{oldClientIndex}}\"].clientId")
+  newClientId=$(echo $deployment | jq -re ".light_clients[\"{{newClientIndex}}\"].clientId")
+  proxy=$(echo $deployment | jq -re ".ics26Router.proxy")
+  calldata=$(cast calldata "{{migrate_client_sig}}" $oldClientId $newClientId)
+  minDelay=$(cast call $timelockAdmin "{{get_min_delay_sig}}")
+
+  echo "function: schedule"
+  echo "to: $proxy"
+  echo "value: 0"
+  echo "data: $calldata"
+  echo "predecessor: 0x"
+  echo "salt: 0x"
+  echo "delay: $minDelay"
+
+[group('upgrade-params')]
+execute-light-client-upgrade-params oldClientIndex newClientIndex:
+  #!/bin/bash
+  set -euo pipefail
+  deployment=$(cat deployments/{{environment}}/{{chain}}.json)
+  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
+  oldClientId=$(echo $deployment | jq -re ".light_clients[\"{{oldClientIndex}}\"].clientId")
+  newClientId=$(echo $deployment | jq -re ".light_clients[\"{{newClientIndex}}\"].clientId")
+  proxy=$(echo $deployment | jq -re ".ics26Router.proxy")
+  calldata=$(cast calldata "{{migrate_client_sig}}" $oldClientId $newClientId)
+
+  echo "function: schedule"
+  echo "to: $proxy"
+  echo "value: 0"
+  echo "data: $calldata"
+  echo "predecessor: 0x"
+  echo "salt: 0x"

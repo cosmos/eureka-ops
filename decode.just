@@ -4,6 +4,7 @@ get_min_delay_sig := "getMinDelay()(uint256)"
 schedule_4byte_sig := "0x01d5062a"
 execute_4byte_sig := "0x134008d3"
 upgrade_to_and_call_sig := "upgradeToAndCall(address)"
+migrate_client_sig := "migrateClient(string calldata,string calldata)"
 upgrade_ibc_erc20_sig := "upgradeIBCERC20(address)"
 upgrade_escrow_sig := "upgradeEscrow(address)"
 
@@ -113,3 +114,43 @@ decode-ics26router-upgrade safe_address nonce type: env-info (get_safe_hashes sa
   echo "ICS26Router upgrade details:"
   echo "New implementation: $expectedNewImplementation"
   echo "Targeting ICS26Router proxy: $expectedTimelockTarget"
+
+[group('verify-safe-tx')]
+decode-light-client-upgrade safe_address nonce type: env-info (get_safe_hashes safe_address nonce)
+  #!/bin/bash
+  set -euo pipefail
+  echo "{{separator}}"
+  tx_file=$({{just}} _decode-timelock-tx {{safe_address}} {{nonce}} {{type}}) || {
+    echo $tx_file; exit 1;
+  }
+
+  tx=$(cat $tx_file)
+
+  deployment=$(cat deployments/{{environment}}/{{chain}}.json)
+  txData=$(echo $tx | jq -re ".timelockData")
+
+  timelockTarget=$(echo $tx | jq -re ".timelockTarget")
+  expectedTimelockTarget=$(echo $deployment | jq -re ".ics26Router.proxy")
+
+  decodedCalldata=$(cast decode-calldata "{{migrate_client_sig}}" $txData)
+  oldClientId=$(echo $decodedCalldata | jq -re ".[0]")
+  newClientId=$(echo $decodedCalldata | jq -re ".[1]")
+
+  oldClientExists=$(echo $deployment | jq -re "[.light_clients[].clientId] | contains([\"$oldClientId\"])")
+  newClientExists=$(echo $deployment | jq -re "[.light_clients[].clientId] | contains([\"$newClientId\"])")
+
+  if [ "$oldClientExists" != "true" ]; then
+    echo "The client ($oldClientId) the proposal is migrating from does not exist"
+  fi
+
+  if [ "$newClientExists" != "true" ]; then
+    echo "The client ($newClientId) the proposal is migrating to does not exist"
+  fi
+
+  if [ "$timelockTarget" != "$expectedTimelockTarget" ]; then
+    echo "Upgrade is called to an unexpected proxy ($timelockTarget vs expected proxy $expectedTimelockTarget). Do not sign."; exit 1;
+  fi;
+
+  echo "Light client upgrade details:"
+  echo "Migrating light client ID from: $oldClientId"
+  echo "Migrating light client ID to: $newClientId"

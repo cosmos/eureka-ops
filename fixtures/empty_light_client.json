@@ -1,0 +1,15 @@
+{
+  "implementation": "0x0000000000000000000000000000000000000000",
+  "verifier": "mock",
+  "counterpartyClientId": "test1",
+  "merklePrefix": [
+    "ibc",
+    "0x"
+  ],
+  "trustedClientState": "",
+  "trustedConsensusState": "",
+  "updateClientVkey": "",
+  "membershipVkey": "",
+  "ucAndMembershipVkey": "",
+  "misbehaviourVkey": ""
+}
