@@ -4,10 +4,10 @@
     "": {
       "name": "@cosmos/eureka-ops",
       "dependencies": {
-        "@srdtrk/solidity-ibc-eureka": "../solidity-ibc-eureka",
         "@openzeppelin/contracts": "^5.2.0",
         "@openzeppelin/contracts-upgradeable": "^5.2.0",
         "@uniswap/permit2": "github:Uniswap/permit2",
+        "@srdtrk/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#e981ff2",
       },
       "devDependencies": {
         "@defi-wonderland/natspec-smells": "^1.1.6",
@@ -54,7 +54,7 @@
 
     "@solidity-parser/parser": ["@solidity-parser/parser@0.19.0", "", {}, "sha512-RV16k/qIxW/wWc+mLzV3ARyKUaMUTBy9tOLMzFhtNSKYeTAanQ3a5MudJKf/8arIFnA2L27SNjarQKmFg0w/jA=="],
 
-    "@srdtrk/solidity-ibc-eureka": ["@srdtrk/solidity-ibc-eureka@file:../solidity-ibc-eureka", { "dependencies": { "@openzeppelin/contracts": "^5.2.0", "@openzeppelin/contracts-upgradeable": "^5.2.0", "@uniswap/permit2": "github:Uniswap/permit2" }, "devDependencies": { "@defi-wonderland/natspec-smells": "^1.1.6", "forge-std": "github:foundry-rs/forge-std#v1.9.6", "solhint": "^5.0.5", "sp1-contracts": "github:succinctlabs/sp1-contracts#v4.0.0" } }],
+    "@srdtrk/solidity-ibc-eureka": ["@srdtrk/solidity-ibc-eureka@github:cosmos/solidity-ibc-eureka#e981ff2", { "dependencies": { "@openzeppelin/contracts": "^5.2.0", "@openzeppelin/contracts-upgradeable": "^5.2.0", "@uniswap/permit2": "github:Uniswap/permit2" } }, "cosmos-solidity-ibc-eureka-e981ff2"],
 
     "@szmarczak/http-timer": ["@szmarczak/http-timer@5.0.1", "", { "dependencies": { "defer-to-connect": "^2.0.1" } }, "sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw=="],
 
@@ -435,10 +435,6 @@
     "zod": ["zod@3.24.2", "", {}, "sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ=="],
 
     "@srdtrk/solidity-ibc-eureka/@uniswap/permit2": ["@uniswap/permit2@github:Uniswap/permit2#cc56ad0", {}, "Uniswap-permit2-cc56ad0"],
-
-    "@srdtrk/solidity-ibc-eureka/forge-std": ["forge-std@github:foundry-rs/forge-std#3b20d60", {}, "foundry-rs-forge-std-3b20d60"],
-
-    "@srdtrk/solidity-ibc-eureka/sp1-contracts": ["sp1-contracts@github:succinctlabs/sp1-contracts#26651fd", {}, "succinctlabs-sp1-contracts-26651fd"],
 
     "decompress-response/mimic-response": ["mimic-response@3.1.0", "", {}, "sha512-z0yWI+4FDrrweS8Zmt4Ej5HdJmky15+L2e6Wgn3+iK5fWzb6T3fhNFq2+MeTRb064c6Wr4N/wv0DzQTjNzHNGQ=="],
 
