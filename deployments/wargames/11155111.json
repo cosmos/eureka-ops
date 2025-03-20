@@ -4,7 +4,8 @@
     "implementation": "0xA436d1970F1149D475Db4F82B088A1990474984D",
     "portCustomizer": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
     "proxy": "0x380ea1c047699f88DCF51d3Ea31d7b65A18BEAbB",
-    "timeLockAdmin": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a"
+    "timeLockAdmin": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
+    "relayer": "0x0000000000000000000000000000000000000000"
   },
   "ics20Transfer": {
     "escrowImplementation": "0x98bea170F864AC3323B705287AD267B52Bd7E109",
