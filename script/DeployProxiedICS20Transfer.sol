@@ -34,21 +34,19 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
             )
         );
 
-        IBCPausableUpgradeable ipu = IBCPausableUpgradeable(address(transferProxy));
+        ICS20Transfer ics20Transfer = ICS20Transfer(address(transferProxy));
 
         if (deployment.pausers.length != 0) {
             for (uint32 i = 0; i < deployment.pausers.length; i++) {
                 address pauser = deployment.pausers[i];
-
-                ipu.grantRole(ipu.PAUSER_ROLE(), pauser);
+                ics20Transfer.grantPauserRole(pauser);
             }
         }
 
         if (deployment.unpausers.length != 0) {
             for (uint32 i = 0; i < deployment.unpausers.length; i++) {
                 address unpauser = deployment.unpausers[i];
-
-                ipu.grantRole(ipu.UNPAUSER_ROLE(), unpauser);
+                ics20Transfer.grantUnpauserRole(unpauser);
             }
         }
 
