@@ -61,7 +61,8 @@ abstract contract DeploySP1ICS07Tendermint is Deployments {
             deployment.misbehaviourVkey,
             verifier,
             deployment.trustedClientState,
-            keccak256(abi.encode(trustedConsensusState))
+            keccak256(abi.encode(trustedConsensusState)),
+            deployment.proofSubmitter
         );
 
         return (ics07Tendermint, trustedConsensusState, trustedClientState);
@@ -167,6 +168,8 @@ contract DeploySP1ICS07TendermintScript is DeploySP1ICS07Tendermint, Script {
             }
 
             vm.startBroadcast();
+
+            deployments[i].proofSubmitter = ics26RouterDeployment.proxy;
 
             (SP1ICS07Tendermint ics07Tendermint, ,) = deploySP1ICS07Tendermint(deployments[i]);
 

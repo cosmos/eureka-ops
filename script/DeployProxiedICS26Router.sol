@@ -80,6 +80,7 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
 
         verify(deployment);
 
+        vm.serializeAddress("ics26Router", "relayer", deployment.relayer);
         vm.serializeAddress("ics26Router", "proxy", address(routerProxy));
         vm.serializeAddress("ics26Router", "implementation", deployment.implementation);
         vm.serializeAddress("ics26Router", "timeLockAdmin", deployment.timeLockAdmin);
