@@ -28,11 +28,30 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
                 deployment.ics26Router,
                 deployment.escrowImplementation,
                 deployment.ibcERC20Implementation,
-                deployment.pausers,
-                deployment.unpausers,
+                address(0),
+                address(0),
                 deployment.permit2
             )
         );
+
+        IBCPausableUpgradeable ipu = IBCPausableUpgradeable(address(transferProxy));
+
+        if (deployment.pausers.length != 0) {
+            for (uint32 i = 0; i < deployment.pausers.length; i++) {
+                address pauser = deployment.pausers[i];
+
+                ipu.grantRole(ipu.PAUSER_ROLE(), pauser);
+            }
+        }
+
+        if (deployment.unpausers.length != 0) {
+            for (uint32 i = 0; i < deployment.unpausers.length; i++) {
+                address unpauser = deployment.unpausers[i];
+
+                ipu.grantRole(ipu.UNPAUSER_ROLE(), unpauser);
+            }
+        }
+
 
         return transferProxy;
     }
