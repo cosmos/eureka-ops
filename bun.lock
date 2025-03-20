@@ -7,7 +7,7 @@
         "@openzeppelin/contracts": "^5.2.0",
         "@openzeppelin/contracts-upgradeable": "^5.2.0",
         "@uniswap/permit2": "github:Uniswap/permit2",
-        "@srdtrk/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#e981ff2",
+        "@srdtrk/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#e5175d03eb5dd6ed3a0d69a46a935dc31a9e9a3c",
       },
       "devDependencies": {
         "@defi-wonderland/natspec-smells": "^1.1.6",
@@ -54,7 +54,7 @@
 
     "@solidity-parser/parser": ["@solidity-parser/parser@0.19.0", "", {}, "sha512-RV16k/qIxW/wWc+mLzV3ARyKUaMUTBy9tOLMzFhtNSKYeTAanQ3a5MudJKf/8arIFnA2L27SNjarQKmFg0w/jA=="],
 
-    "@srdtrk/solidity-ibc-eureka": ["@srdtrk/solidity-ibc-eureka@github:cosmos/solidity-ibc-eureka#e981ff2", { "dependencies": { "@openzeppelin/contracts": "^5.2.0", "@openzeppelin/contracts-upgradeable": "^5.2.0", "@uniswap/permit2": "github:Uniswap/permit2" } }, "cosmos-solidity-ibc-eureka-e981ff2"],
+    "@srdtrk/solidity-ibc-eureka": ["@srdtrk/solidity-ibc-eureka@github:cosmos/solidity-ibc-eureka#e5175d0", { "dependencies": { "@openzeppelin/contracts": "^5.2.0", "@openzeppelin/contracts-upgradeable": "^5.2.0", "@uniswap/permit2": "github:Uniswap/permit2" } }, "cosmos-solidity-ibc-eureka-e5175d0"],
 
     "@szmarczak/http-timer": ["@szmarczak/http-timer@5.0.1", "", { "dependencies": { "defer-to-connect": "^2.0.1" } }, "sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw=="],
 
