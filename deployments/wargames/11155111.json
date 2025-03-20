@@ -1,17 +1,17 @@
 {
   "rpc_url": "https://sepolia.drpc.org",
   "ics26Router": {
-    "implementation": "0xA436d1970F1149D475Db4F82B088A1990474984D",
+    "implementation": "0x8e3f790D6A2458b43f5EF53a3968BFB4DAc2952D",
     "portCustomizer": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
     "proxy": "0x380ea1c047699f88DCF51d3Ea31d7b65A18BEAbB",
     "timeLockAdmin": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
     "relayer": "0x0000000000000000000000000000000000000000"
   },
   "ics20Transfer": {
-    "escrowImplementation": "0x98bea170F864AC3323B705287AD267B52Bd7E109",
-    "ibcERC20Implementation": "0xA766072DbD191efD337F6170494680B838D753ec",
+    "escrowImplementation": "0x36caE9C5e68a92867f3f5914b73C65ff0c858F75",
+    "ibcERC20Implementation": "0x171D1771E3334C238d93B1Df2a74396dd58fF20C",
     "ics26Router": "0x380ea1c047699f88DCF51d3Ea31d7b65A18BEAbB",
-    "implementation": "0x36caE9C5e68a92867f3f5914b73C65ff0c858F75",
+    "implementation": "0xCC985905bBC562d672D3A732A92Ab870510bC918",
     "pausers": [
       "0xd401EF91b68745193dFFeA21Bdc703990fbb50d6",
       "0x3D91b024357a799a6A323A342Cae2e4EbecEfa71",
@@ -26,6 +26,7 @@
   },
   "light_clients": {
     "0": {
+      "clientId": "client-0",
       "implementation": "0x1328ec28990dF0de8993F474d5735918397AbD67",
       "verifier": "0xbACD04656Fd51BA2f97878d91695327B372E35Ad",
       "counterpartyClientId": "test1",
