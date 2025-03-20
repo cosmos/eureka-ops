@@ -78,13 +78,13 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
             "permit2 addresses don't match"
         );
 
-        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
-        address transferApp = address(ics26Router.getIBCApp(ICS20Lib.DEFAULT_PORT_ID));
-        vm.assertEq(
-            transferApp,
-            deployment.proxy,
-            "transfer app address doesn't match with the one in ics26Router"
-        );
+//        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
+//        address transferApp = address(ics26Router.getIBCApp(ICS20Lib.DEFAULT_PORT_ID));
+//        vm.assertEq(
+//            transferApp,
+//            deployment.proxy,
+//            "transfer app address doesn't match with the one in ics26Router"
+//        );
 
         if (deployment.pausers.length != 0) {
             for (uint32 i = 0; i < deployment.pausers.length; i++) {
@@ -148,8 +148,8 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
 
         ERC1967Proxy transferProxy = deployProxiedICS20Transfer(deployment);
     
-        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
-        ics26Router.addIBCApp(ICS20Lib.DEFAULT_PORT_ID, address(transferProxy));
+//        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
+//        ics26Router.addIBCApp(ICS20Lib.DEFAULT_PORT_ID, address(transferProxy));
 
         vm.stopBroadcast();
 
