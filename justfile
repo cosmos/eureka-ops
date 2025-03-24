@@ -1,10 +1,7 @@
+import 'consts.just'
 import 'safe.just'
 import 'deploy.just'
-import 'decode.just'
 import 'upgrade.just'
-
-default:
-    just -f {{justfile()}} --list
 
 set dotenv-load
 set dotenv-filename := ".eureka-env"
@@ -19,12 +16,11 @@ broadcast_flag := if broadcast == "true" { " --broadcast" } else { "" }
 private_key_flag := if private_key != "" { " --private-key " + private_key } else { "" }
 debug_flag := if debug == "true" { " -vvvvv" } else { "" }
 
-forge_binary := "forge"
 forge_flags := ledger_flag + broadcast_flag + private_key_flag + debug_flag
 forge_command := forge_binary
 
-cast_command := "cast"
-just := "just -f " + justfile()
+default:
+    {{just}} --list
 
 [group('operations')]
 [doc('Creates a new operation doc')]
