@@ -62,21 +62,25 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
             "timelockAdmin addresses don't match"
         );
 
-        vm.assertTrue(
-            ics26Router.hasRole(
-                ics26Router.PORT_CUSTOMIZER_ROLE(),
-                deployment.portCustomizer
-            ),
-            "portCustomizer role not granted"
-        );
+        if (deployment.portCustomizer != address(0)) {
+            vm.assertTrue(
+                ics26Router.hasRole(
+                    ics26Router.PORT_CUSTOMIZER_ROLE(),
+                    deployment.portCustomizer
+                ),
+                "portCustomizer role not granted"
+            );
+        }
 
-        vm.assertTrue(
-            ics26Router.hasRole(
-                ics26Router.CLIENT_ID_CUSTOMIZER_ROLE(),
-                deployment.clientIdCustomizer
-            ),
-            "clientIdCustomizer role not granted"
-        );
+        if (deployment.clientIdCustomizer != address(0)) {
+            vm.assertTrue(
+                ics26Router.hasRole(
+                    ics26Router.CLIENT_ID_CUSTOMIZER_ROLE(),
+                    deployment.clientIdCustomizer
+                ),
+                "clientIdCustomizer role not granted"
+            );
+        }
 
         if (deployment.relayers.length != 0) {
             for (uint32 i = 0; i < deployment.relayers.length; i++) {

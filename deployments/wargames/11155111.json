@@ -2,10 +2,11 @@
   "rpc_url": "https://sepolia.drpc.org",
   "ics26Router": {
     "implementation": "0x8e3f790D6A2458b43f5EF53a3968BFB4DAc2952D",
-    "portCustomizer": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
     "proxy": "0x380ea1c047699f88DCF51d3Ea31d7b65A18BEAbB",
     "timeLockAdmin": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
-    "relayer": "0x0000000000000000000000000000000000000000"
+    "relayers": [],
+    "portCustomizer": "0xddBaC5B389b9dBe5183c51d745414A03CB05f89a",
+    "clientIdCustomizer": "0x0000000000000000000000000000000000000000"
   },
   "ics20Transfer": {
     "escrowImplementation": "0x36caE9C5e68a92867f3f5914b73C65ff0c858F75",

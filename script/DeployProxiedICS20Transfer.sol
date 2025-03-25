@@ -16,6 +16,7 @@ import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol";
 import { IBCPausableUpgradeable } from "solidity-ibc-eureka/contracts/utils/IBCPausableUpgradeable.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
+import "forge-std/console.sol";
 
 abstract contract DeployProxiedICS20Transfer is Deployments {
     using stdJson for string;
@@ -43,7 +44,7 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
         if (deployment.pausers.length != 0) {
             for (uint32 i = 0; i < deployment.pausers.length; i++) {
                 address pauser = deployment.pausers[i];
-                console.log("Granting pauser role to: " + pauser);
+                console.log("Granting pauser role to: ", pauser);
                 ics20Transfer.grantPauserRole(pauser);
             }
         }
@@ -51,7 +52,7 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
         if (deployment.unpausers.length != 0) {
             for (uint32 i = 0; i < deployment.unpausers.length; i++) {
                 address unpauser = deployment.unpausers[i];
-                console.log("Granting unpauser role to: " + unpauser);
+                console.log("Granting unpauser role to: ", unpauser);
                 ics20Transfer.grantUnpauserRole(unpauser);
             }
         }
