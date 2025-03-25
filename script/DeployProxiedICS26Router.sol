@@ -85,7 +85,7 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
                         ics26Router.RELAYER_ROLE(),
                         deployment.relayers[i]
                     ),
-                    "relayer role not granted to " + vm.toString(deployment.relayers[i])
+                    string.concat("relayer role not granted to ", vm.toString(deployment.relayers[i]))
                 );
             }
         }
