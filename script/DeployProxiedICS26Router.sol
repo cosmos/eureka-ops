@@ -17,10 +17,21 @@ abstract contract DeployProxiedICS26Router is Deployments {
     using stdJson for string;
 
     function deployProxiedICS26Router(Deployments.ProxiedICS26RouterDeployment memory deployment) public returns (ERC1967Proxy) {
+        require(msg.sender == deployment.timeLockAdmin, "sender must be timeLockAdmin");
+
         ERC1967Proxy routerProxy = new ERC1967Proxy(
             deployment.implementation,
-            abi.encodeWithSelector(ICS26Router.initialize.selector, deployment.timeLockAdmin, deployment.timeLockAdmin)
+            abi.encodeCall(ICS26Router.initialize, (deployment.timeLockAdmin))
         );
+
+        ICS26Router ics26Router = ICS26Router(address(routerProxy));
+
+        for (uint256 i = 0; i < deployment.relayers.length; i++) {
+            ics26Router.grantRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i]);
+        }
+
+        ics26Router.grantRole(ics26Router.PORT_CUSTOMIZER_ROLE(), deployment.portCustomizer);
+        ics26Router.grantRole(ics26Router.CLIENT_ID_CUSTOMIZER_ROLE(), deployment.clientIdCustomizer);
 
         return routerProxy;
     }
@@ -43,12 +54,41 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
         );
 
         IIBCUUPSUpgradeable uups = IIBCUUPSUpgradeable(address(routerProxy));
+        ICS26Router ics26Router = ics26Router(address(routerProxy));
 
         vm.assertEq(
             uups.getTimelockedAdmin(),
             deployment.timeLockAdmin,
             "timelockAdmin addresses don't match"
         );
+
+        vm.assertTrue(
+            ics26Router.hasRole(
+                ics26Router.PORT_CUSTOMIZER_ROLE(),
+                deployment.portCustomizer
+            ),
+            "portCustomizer role not granted"
+        );
+
+        vm.assertTrue(
+            ics26Router.hasRole(
+                ics26Router.CLIENT_ID_CUSTOMIZER_ROLE(),
+                deployment.clientIdCustomizer
+            ),
+            "clientIdCustomizer role not granted"
+        );
+
+        if (deployment.relayers.length != 0) {
+            for (uint32 i = 0; i < deployment.relayers.length; i++) {
+                vm.assertTrue(
+                    ics26Router.hasRole(
+                        ics26Router.RELAYER_ROLE(),
+                        deployment.relayers[i]
+                    ),
+                    "relayer role not granted to " + vm.toString(deployment.relayers[i])
+                );
+            }
+        }
     }
 
     function run() public returns (address){
@@ -80,10 +120,12 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
 
         verify(deployment);
 
-        vm.serializeAddress("ics26Router", "relayer", deployment.relayer);
         vm.serializeAddress("ics26Router", "proxy", address(routerProxy));
         vm.serializeAddress("ics26Router", "implementation", deployment.implementation);
         vm.serializeAddress("ics26Router", "timeLockAdmin", deployment.timeLockAdmin);
+        vm.serializeAddress("ics26Router", "clientIdCustomizer", deployment.clientIdCustomizer);
+        vm.serializeAddress("ics26Router", "portCustomizer", deployment.portCustomizer);
+        vm.serializeAddress("ics26Router", "relayers", deployment.relayers);
         string memory output = vm.serializeAddress("ics26Router", "portCustomizer", deployment.portCustomizer);
 
         vm.writeJson(output, path, ".ics26Router");

@@ -12,9 +12,9 @@ UPGRADE_ESCROW_SIG := "upgradeEscrowTo(address)"
 ## foundry commands
 
 forge_binary := "forge"
-cast := "cast"
+cast_binary := "cast"
+chisel_binary := "chisel"
 just := "just -f " + justfile()
-chisel := "chisel"
 
 separator := "===================================================================================="
 

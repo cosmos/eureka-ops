@@ -7,7 +7,7 @@ zero_bytes32 := "0x0000000000000000000000000000000000000000000000000000000000000
 get_safe_owners safe_address:
     #!/bin/bash
     set -euo pipefail
-    owners=$({{cast}} call {{safe_address}} "getOwners()(address[])")
+    owners=$({{cast_binary}} call {{safe_address}} "getOwners()(address[])")
     owners=$(echo $owners | sed -E 's/(0x[0-9a-fA-F]+)/"\1"/g' | jq -r)
     echo $owners
 
@@ -15,19 +15,19 @@ get_safe_owners safe_address:
 get_safe_nonce safe_address:
     #!/bin/bash
     set -euo pipefail
-    nonce=$({{cast}} call {{safe_address}} "nonce()(uint256)")
+    nonce=$({{cast_binary}} call {{safe_address}} "nonce()(uint256)")
     echo $nonce
 
 _get_safe_domain_hash safe_address nonce:
   #!/bin/bash
   set -euo pipefail
-  domain_hash=$(chisel eval --json "keccak256(abi.encode({{eip712_separator_typehash}}, {{chain}}, {{safe_address}}))" | awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
+  domain_hash=$({{chisel_binary}} eval --json "keccak256(abi.encode({{eip712_separator_typehash}}, {{chain}}, {{safe_address}}))" | awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
   echo $domain_hash
   
 _get_safe_message_hash safe_address nonce data to:
   #!/bin/bash
   set -euxo pipefail
-  data_hashed=$({{cast_command}} keccak "{{data}}")
+  data_hashed=$({{cast_binary}} keccak "{{data}}")
 
   value="0"
   operation="0"
@@ -37,7 +37,7 @@ _get_safe_message_hash safe_address nonce data to:
   gas_token="{{zero_address}}"
   refund_receiver="{{zero_address}}"
 
-  message=$({{cast_command}} abi-encode "SafeTxStruct(bytes32,address,uint256,bytes32,uint8,uint256,uint256,uint256,address,address,uint256)" \
+  message=$({{cast_binary}} abi-encode "SafeTxStruct(bytes32,address,uint256,bytes32,uint8,uint256,uint256,uint256,address,address,uint256)" \
           "{{safe_tx_typehash}}" \
           "{{to}}" \
           "$value" \
@@ -50,12 +50,12 @@ _get_safe_message_hash safe_address nonce data to:
           "$refund_receiver" \
           "{{nonce}}")
 
-  echo $({{cast}} keccak "$message")
+  echo $({{cast_binary}} keccak "$message")
 
 _get_safe_tx_hash safe_address nonce domain_hash message_hash:
   #!/bin/bash
   set -euo pipefail
-  safe_tx_hash=$(chisel eval "keccak256(abi.encodePacked(bytes1(0x19), bytes1(0x01), bytes32({{domain_hash}}), bytes32({{message_hash}})))" |
+  safe_tx_hash=$({{chisel_binary}} eval "keccak256(abi.encodePacked(bytes1(0x19), bytes1(0x01), bytes32({{domain_hash}}), bytes32({{message_hash}})))" |
         awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
   echo $safe_tx_hash
 

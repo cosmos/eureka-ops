@@ -23,22 +23,27 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
     function deployProxiedICS20Transfer(ProxiedICS20TransferDeployment memory deployment) public returns (ERC1967Proxy) {
         ERC1967Proxy transferProxy = new ERC1967Proxy(
             deployment.implementation,
-            abi.encodeWithSelector(
-                ICS20Transfer.initialize.selector,
-                deployment.ics26Router,
-                deployment.escrowImplementation,
-                deployment.ibcERC20Implementation,
-                address(0),
-                address(0),
-                deployment.permit2
+            abi.encodeCall(
+                ICS20Transfer.initialize,
+                (
+                    deployment.ics26Router,
+                    deployment.escrowImplementation,
+                    deployment.ibcERC20Implementation,
+                    address(0),
+                    address(0),
+                    deployment.permit2
+                )
             )
         );
+
+        console.log("Deployed ICS20Transfer at address: ", address(transferProxy));
 
         ICS20Transfer ics20Transfer = ICS20Transfer(address(transferProxy));
 
         if (deployment.pausers.length != 0) {
             for (uint32 i = 0; i < deployment.pausers.length; i++) {
                 address pauser = deployment.pausers[i];
+                console.log("Granting pauser role to: " + pauser);
                 ics20Transfer.grantPauserRole(pauser);
             }
         }
@@ -46,6 +51,7 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
         if (deployment.unpausers.length != 0) {
             for (uint32 i = 0; i < deployment.unpausers.length; i++) {
                 address unpauser = deployment.unpausers[i];
+                console.log("Granting unpauser role to: " + unpauser);
                 ics20Transfer.grantUnpauserRole(unpauser);
             }
         }
@@ -95,13 +101,13 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
             "permit2 addresses don't match"
         );
 
-//        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
-//        address transferApp = address(ics26Router.getIBCApp(ICS20Lib.DEFAULT_PORT_ID));
-//        vm.assertEq(
-//            transferApp,
-//            deployment.proxy,
-//            "transfer app address doesn't match with the one in ics26Router"
-//        );
+        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
+        address transferApp = address(ics26Router.getIBCApp(ICS20Lib.DEFAULT_PORT_ID));
+        vm.assertEq(
+            transferApp,
+            deployment.proxy,
+            "transfer app address doesn't match with the one in ics26Router"
+        );
 
         if (deployment.pausers.length != 0) {
             for (uint32 i = 0; i < deployment.pausers.length; i++) {
@@ -165,8 +171,8 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
 
         ERC1967Proxy transferProxy = deployProxiedICS20Transfer(deployment);
     
-//        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
-//        ics26Router.addIBCApp(ICS20Lib.DEFAULT_PORT_ID, address(transferProxy));
+        IICS26Router ics26Router = IICS26Router(deployment.ics26Router);
+        ics26Router.addIBCApp(ICS20Lib.DEFAULT_PORT_ID, address(transferProxy));
 
         vm.stopBroadcast();
 

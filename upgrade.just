@@ -5,8 +5,8 @@ _schedule-erc1967-upgrade-params safe_address nonce type: env-info
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
   newImplementation=$(echo $deployment | jq -re ".ics20Transfer.implementation")
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
-  calldata=$({{cast}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
-  minDelay=$({{cast}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
+  calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
+  minDelay=$({{cast_binary}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -23,7 +23,7 @@ _execute-erc1967-upgrade-params safe_address nonce type: env-info
   newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
   proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
-  calldata=$({{cast}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
+  calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
 
   echo "function: chedule"
   echo "to: $proxy"
@@ -32,7 +32,7 @@ _execute-erc1967-upgrade-params safe_address nonce type: env-info
   echo "predecessor: 0x"
   echo "salt: 0x"
 
-  data=$({{cast}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+  data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
   {{just}} _get_offline_safe_message_hash {{safe_address}} {{nonce}} $timelockAdmin $data
 
 
@@ -43,8 +43,8 @@ _schedule-beacon-upgrade-params safe_address nonce sig type:
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
   newImplementation=$(echo $deployment | jq -re ".ics20Transfer.{{type}}Implementation")
   proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
-  calldata=$({{cast}} calldata "{{sig}}" $newImplementation)
-  minDelay=$({{cast}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
+  calldata=$({{cast_binary}} calldata "{{sig}}" $newImplementation)
+  minDelay=$({{cast_binary}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -61,7 +61,7 @@ _execute-beacon-upgrade-params safe_address nonce sig type:
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
   newImplementation=$(echo $deployment | jq -re ".ics20Transfer.{{type}}Implementation")
   proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
-  calldata=$({{cast}} calldata "{{sig}}" $newImplementation)
+  calldata=$({{cast_binary}} calldata "{{sig}}" $newImplementation)
 
   echo "function: execute"
   echo "to: $proxy"
@@ -70,7 +70,7 @@ _execute-beacon-upgrade-params safe_address nonce sig type:
   echo "predecessor: 0x"
   echo "salt: 0x"
 
-  data=$({{cast}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+  data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
   {{just}} get_safe_hashes {{safe_address}} {{nonce}} $data $timelockAdmin
 
 [group('upgrade-params')]
@@ -100,8 +100,8 @@ schedule-light-client-upgrade-params safe_address nonce oldClientIndex newClient
   oldClientId=$(echo $deployment | jq -re ".light_clients[\"{{oldClientIndex}}\"].clientId")
   newClientId=$(echo $deployment | jq -re ".light_clients[\"{{newClientIndex}}\"].clientId")
   proxy=$(echo $deployment | jq -re ".ics26Router.proxy")
-  calldata=$({{cast}} calldata "{{MIGRATE_CLIENT_SIG}}" $oldClientId $newClientId)
-  minDelay=$({{cast}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
+  calldata=$({{cast_binary}} calldata "{{MIGRATE_CLIENT_SIG}}" $oldClientId $newClientId)
+  minDelay=$({{cast_binary}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -111,7 +111,7 @@ schedule-light-client-upgrade-params safe_address nonce oldClientIndex newClient
   echo "salt: 0x"
   echo "delay: $minDelay"
 
-  data=$({{cast}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+  data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
   {{just}} get_safe_hashes {{safe_address}} {{nonce}} $data $timelockAdmin
 
 [group('upgrade-params')]
@@ -123,7 +123,7 @@ execute-light-client-upgrade-params safe_address nonce oldClientIndex newClientI
   oldClientId=$(echo $deployment | jq -re ".light_clients[\"{{oldClientIndex}}\"].clientId")
   newClientId=$(echo $deployment | jq -re ".light_clients[\"{{newClientIndex}}\"].clientId")
   proxy=$(echo $deployment | jq -re ".ics26Router.proxy")
-  calldata=$({{cast}} calldata "{{MIGRATE_CLIENT_SIG}}" $oldClientId $newClientId)
+  calldata=$({{cast_binary}} calldata "{{MIGRATE_CLIENT_SIG}}" $oldClientId $newClientId)
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -132,5 +132,5 @@ execute-light-client-upgrade-params safe_address nonce oldClientIndex newClientI
   echo "predecessor: 0x"
   echo "salt: 0x"
 
-  data=$({{cast}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+  data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
   {{just}} get_safe_hashes {{safe_address}} {{nonce}} $data $timelockAdmin
