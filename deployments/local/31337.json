@@ -2,7 +2,7 @@
   "rpc_url": "http://localhost:8545",
   "ics26Router": {
     "proxy": "0x0000000000000000000000000000000000000000",
-    "relayer": ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"],
+    "relayers": ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"],
     "implementation": "0x0000000000000000000000000000000000000000",
     "timeLockAdmin": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
     "portCustomizer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
