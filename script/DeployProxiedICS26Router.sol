@@ -54,7 +54,7 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
         );
 
         IIBCUUPSUpgradeable uups = IIBCUUPSUpgradeable(address(routerProxy));
-        ICS26Router ics26Router = ics26Router(address(routerProxy));
+        ICS26Router ics26Router = ICS26Router(address(routerProxy));
 
         vm.assertEq(
             uups.getTimelockedAdmin(),
