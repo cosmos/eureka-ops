@@ -30,8 +30,6 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
                     deployment.ics26Router,
                     deployment.escrowImplementation,
                     deployment.ibcERC20Implementation,
-                    address(0),
-                    address(0),
                     deployment.permit2
                 )
             )
@@ -57,6 +55,11 @@ abstract contract DeployProxiedICS20Transfer is Deployments {
             }
         }
 
+        if (deployment.tokenOperator != address(0)) {
+            address tokenOperator = deployment.tokenOperator;
+            console.log("Granting tokenOperator role to: ", tokenOperator);
+            ics20Transfer.grantTokenOperatorRole(tokenOperator);
+        }
 
         return transferProxy;
     }
@@ -135,6 +138,15 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
                 );
             }
         }
+
+        if (deployment.tokenOperator != address(0)) {
+            IBCPausableUpgradeable ipu = IBCPausableUpgradeable(address(transferProxy));
+
+            vm.assertTrue(
+                ipu.hasRole(ics20Transfer.TOKEN_OPERATOR_ROLE(), deployment.tokenOperator),
+                string.concat("tokenOperator address (", Strings.toHexString(deployment.tokenOperator), ") doesn't have tokenOperator role")
+            );
+        }
     }
 
     function run() public returns (address){
@@ -186,6 +198,7 @@ contract DeployProxiedICS20TransferScript is DeployProxiedICS20Transfer, Script 
         vm.serializeAddress("ics20Transfer", "ibcERC20Implementation", deployment.ibcERC20Implementation);
         vm.serializeAddress("ics20Transfer", "pausers", deployment.pausers);
         vm.serializeAddress("ics20Transfer", "unpausers", deployment.unpausers);
+        vm.serializeAddress("ics20Transfer", "tokenOperator", deployment.tokenOperator);
         vm.serializeAddress("ics20Transfer", "ics26Router", deployment.ics26Router);
         string memory output = vm.serializeAddress("ics20Transfer", "permit2", deployment.permit2);
 
