@@ -69,6 +69,6 @@ _verify-deployment environment chain $FOUNDRY_ETH_RPC_URL:
     set -eou pipefail
     export VERIFY_ONLY=true
     export DEPLOYMENT_ENV={{environment}}
-    {{forge_command}} script scripts/deployments/DeployProxiedICS26Router.sol
-    {{forge_command}} script scripts/deployments/DeployProxiedICS20Transfer.sol
-    {{forge_command}} script scripts/deployments/DeploySP1ICS07Tendermint.sol
+    {{forge_command}} script script/DeployProxiedICS26Router.sol
+    {{forge_command}} script script/DeployProxiedICS20Transfer.sol
+    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol
