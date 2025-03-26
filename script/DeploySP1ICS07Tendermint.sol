@@ -156,8 +156,8 @@ contract DeploySP1ICS07TendermintScript is DeploySP1ICS07Tendermint, Script {
 
         bool verifyOnly = vm.envOr("VERIFY_ONLY", false);
 
-        SP1ICS07TendermintDeployment[] memory deployments = loadSP1ICS07TendermintDeployments(vm, json);
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
+        SP1ICS07TendermintDeployment[] memory deployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
 
         IICS02Client ics26Router = IICS02Client(ics26RouterDeployment.proxy);
 

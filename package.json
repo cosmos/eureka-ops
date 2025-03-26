@@ -9,7 +9,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.2.0",
     "@openzeppelin/contracts-upgradeable": "^5.2.0",
-    "@srdtrk/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#e8bddbe6ca063986cc16d47733b623704664ded2",
+    "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#34d304f6715fad05168b75c393e59a4d7e9e149d",
     "@uniswap/permit2": "github:Uniswap/permit2"
   },
   "devDependencies": {

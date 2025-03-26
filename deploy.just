@@ -55,3 +55,10 @@ _new-deployment contract key:
 env-info:
   @echo "Environment: {{environment}}"
   @echo "Chain ID: {{chain}}"
+
+[group('deploy')]
+deploy-ics26-router:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    {{forge_command}} script script/DeployProxiedICS26Router.sol --broadcast --chain-id {{chain}} 
