@@ -1,0 +1,23 @@
+{
+  "rpc_url": "https://eth.drpc.org",
+  "ics26Router": {
+    "clientIdCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "implementation": "0x872Aa3fF3DFC819380b76361BCff59Df45568f86",
+    "portCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "proxy": "0x3aF134307D5Ee90faa2ba9Cdba14ba66414CF1A7",
+    "relayers": [],
+    "timeLockAdmin": "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+  },
+  "ics20Transfer": {
+    "escrowImplementation": "0xf24A818d2E276936a7ABDDfaAd9c369a5B9Dcde8",
+    "ibcERC20Implementation": "0x337842047368607f458e3D7bb47E676aec1509d9",
+    "ics26Router": "0x3aF134307D5Ee90faa2ba9Cdba14ba66414CF1A7",
+    "implementation": "0x4AC36b4e2dB6ecc221598dBffBB012Fbb8ac9d6B",
+    "pausers": [],
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "proxy": "0xa348CfE719B63151F228e3C30EB424BA5a983012",
+    "tokenOperator": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "unpausers": []
+  },
+  "light_clients": {}
+}

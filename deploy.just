@@ -1,5 +1,6 @@
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
+sender := env_var_or_default("SENDER", "")
 export FOUNDRY_ETH_RPC_URL := if environment == "" { "" } else if chain == "" { "" } else { `jq -re '.rpc_url' deployments/$EUREKA_ENVIRONMENT/$EUREKA_CHAIN.json` }
 
 [group('deploy-implementation')]
@@ -61,4 +62,12 @@ deploy-ics26-router:
     #!/bin/bash
     set -euo pipefail
     export DEPLOYMENT_ENV={{environment}}
-    {{forge_command}} script script/DeployProxiedICS26Router.sol --broadcast --chain-id {{chain}} 
+    forge script script/DeployProxiedICS26Router.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-ics20-transfer:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeployProxiedICS20Transfer.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
