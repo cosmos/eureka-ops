@@ -27,12 +27,12 @@ new-light-client:
     nextLightClient=$(echo $deployment | jq -re ".light_clients | keys | sort | reverse | tonumber | . - 1")
     updatedDeployment=$(jq '.light_clients["$nextLightClient"] |= input' deployments/{{environment}}/{{chain}}.json fixtures/empty_light_client.json)
 
-[group('deploy')]
-deploy-light-client:
-    #!/bin/bash
-    set -euo pipefail
-    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol --broadcast --chain-id {{chain}} {{forge_flags}}
-    git commit -am "operation: deployed new light client on {{chain}}" || true
+#[group('deploy')]
+#deploy-light-client:
+#    #!/bin/bash
+#    set -euo pipefail
+#    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol --broadcast --chain-id {{chain}} {{forge_flags}}
+#    git commit -am "operation: deployed new light client on {{chain}}" || true
 
 pause-deployment $DEPLOYMENT_ENV chain:
     {{forge_command}} script script/PauseTransfers.sol --broadcast --chain-id {{chain}} {{forge_flags}}
@@ -70,4 +70,25 @@ deploy-ics20-transfer:
     set -euo pipefail
     export DEPLOYMENT_ENV={{environment}}
     forge script script/DeployProxiedICS20Transfer.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-light-client:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeploySP1ICS07Tendermint.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-relayer-helper:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeployRelayerHelper.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-set-whitelisted-relayers:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/SetWhitelistedRelayers.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
