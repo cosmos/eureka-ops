@@ -1,0 +1,34 @@
+{
+  "transactions": [
+    {
+      "hash": "0x53ff6038a90972b436326f6200d7014a7997222e00e3468cfbdf2ab320d5f2c0",
+      "transactionType": "CALL",
+      "contractName": null,
+      "contractAddress": "0x2af0a519bf97a16acd30325ce1b2ee131c87e57c",
+      "function": "setMetadata(uint8,string,string)",
+      "arguments": [
+        "6",
+        "Cosmos Hub Testnet",
+        "atom"
+      ],
+      "transaction": {
+        "from": "0x64259f722a0868ccf58a935c61a292cea9df035a",
+        "to": "0x2af0a519bf97a16acd30325ce1b2ee131c87e57c",
+        "gas": "0x1db48",
+        "value": "0x0",
+        "input": "0xb090e66c0000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000012436f736d6f732048756220546573746e65740000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000461746f6d00000000000000000000000000000000000000000000000000000000",
+        "nonce": "0x19",
+        "chainId": "0x1"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1743089804,
+  "chain": 1,
+  "commit": "3f332ab"
+}

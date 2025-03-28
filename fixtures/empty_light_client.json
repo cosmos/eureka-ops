@@ -4,7 +4,7 @@
   "counterpartyClientId": "test1",
   "merklePrefix": [
     "ibc",
-    "0x"
+    ""
   ],
   "trustedClientState": "",
   "trustedConsensusState": "",

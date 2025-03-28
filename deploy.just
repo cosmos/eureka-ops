@@ -1,5 +1,6 @@
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
+sender := env_var_or_default("SENDER", "")
 export FOUNDRY_ETH_RPC_URL := if environment == "" { "" } else if chain == "" { "" } else { `jq -re '.rpc_url' deployments/$EUREKA_ENVIRONMENT/$EUREKA_CHAIN.json` }
 
 [group('deploy-implementation')]
@@ -26,12 +27,12 @@ new-light-client:
     nextLightClient=$(echo $deployment | jq -re ".light_clients | keys | sort | reverse | tonumber | . - 1")
     updatedDeployment=$(jq '.light_clients["$nextLightClient"] |= input' deployments/{{environment}}/{{chain}}.json fixtures/empty_light_client.json)
 
-[group('deploy')]
-deploy-light-client:
-    #!/bin/bash
-    set -euo pipefail
-    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol --broadcast --chain-id {{chain}} {{forge_flags}}
-    git commit -am "operation: deployed new light client on {{chain}}" || true
+#[group('deploy')]
+#deploy-light-client:
+#    #!/bin/bash
+#    set -euo pipefail
+#    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol --broadcast --chain-id {{chain}} {{forge_flags}}
+#    git commit -am "operation: deployed new light client on {{chain}}" || true
 
 pause-deployment $DEPLOYMENT_ENV chain:
     {{forge_command}} script script/PauseTransfers.sol --broadcast --chain-id {{chain}} {{forge_flags}}
@@ -61,4 +62,54 @@ deploy-ics26-router:
     #!/bin/bash
     set -euo pipefail
     export DEPLOYMENT_ENV={{environment}}
-    {{forge_command}} script script/DeployProxiedICS26Router.sol --broadcast --chain-id {{chain}} 
+    forge script script/DeployProxiedICS26Router.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-ics20-transfer:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeployProxiedICS20Transfer.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-light-client:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeploySP1ICS07Tendermint.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-relayer-helper:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/DeployRelayerHelper.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-set-whitelisted-relayers:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/SetWhitelistedRelayers.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-migrate-light-client:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/MigrateLightClient.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-metadata-role:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/GrantMetadataRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-set-metadata:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/SetTokenMetadata.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
