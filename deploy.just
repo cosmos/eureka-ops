@@ -92,3 +92,24 @@ deploy-set-whitelisted-relayers:
     export DEPLOYMENT_ENV={{environment}}
     forge script script/SetWhitelistedRelayers.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
+[group('deploy')]
+deploy-migrate-light-client:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/MigrateLightClient.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-metadata-role:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/GrantMetadataRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-set-metadata:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/SetTokenMetadata.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
