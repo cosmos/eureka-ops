@@ -1,7 +1,6 @@
 # Compiler files
 cache/
 out/
-broadcast/
 soljson-latest.js
 
 # Ignores development broadcast logs
