@@ -113,3 +113,10 @@ deploy-set-metadata:
     export DEPLOYMENT_ENV={{environment}}
     forge script script/SetTokenMetadata.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
+[group('deploy')]
+deploy-grant-delegate-sender-role:
+    #!/bin/bash
+    set -euo pipefail
+    export DEPLOYMENT_ENV={{environment}}
+    forge script script/GrantDelegateSenderRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+

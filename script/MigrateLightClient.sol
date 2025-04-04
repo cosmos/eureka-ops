@@ -56,5 +56,16 @@ contract MigrateSP1ICS07Tendermint is Script, Deployments {
 
         // Update the deployment JSON
         vm.writeJson(vm.toString(address(replacementLightClient)), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].implementation"));
+        vm.writeJson(deploymentToMigrateTo.verifier, path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].verifier"));
+        vm.writeJson(deploymentToMigrateTo.counterpartyClientId, path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].counterpartyClientId"));
+        for (uint256 i = 0; i < deploymentToMigrateTo.merklePrefix.length; i++) {
+            vm.writeJson(deploymentToMigrateTo.merklePrefix[i], path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].merklePrefix[", Strings.toString(i), "]"));
+        }
+        vm.writeJson(vm.toString(deploymentToMigrateTo.trustedClientState), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedClientState"));
+        vm.writeJson(vm.toString(deploymentToMigrateTo.trustedConsensusState), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedConsensusState"));
+        vm.writeJson(vm.toString(deploymentToMigrateTo.updateClientVkey), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].updateClientVkey"));
+        vm.writeJson(vm.toString(deploymentToMigrateTo.membershipVkey), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].membershipVkey"));
+        vm.writeJson(vm.toString(deploymentToMigrateTo.ucAndMembershipVkey), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].ucAndMembershipVkey"));
+        vm.writeJson(vm.toString(deploymentToMigrateTo.misbehaviourVkey), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].misbehaviourVkey"));
     }
 }
