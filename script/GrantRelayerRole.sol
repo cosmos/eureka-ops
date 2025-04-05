@@ -8,9 +8,10 @@ import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol
 import { RelayerHelper } from "solidity-ibc-eureka/contracts/utils/RelayerHelper.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
+import "forge-std/console.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
-contract SetWhitelistedRelayers is Script, Deployments {
+contract GrantRelayerRole is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
@@ -24,7 +25,13 @@ contract SetWhitelistedRelayers is Script, Deployments {
         vm.startBroadcast();
         for (uint256 i = 0; i < deployment.relayers.length; i++) {
             // TODO: Check if they already have the role before granting it
+            if (ics26Router.hasRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i])) {
+                console.log("Relayer %s already has the role", deployment.relayers[i]);
+                continue;
+            }
+
             ics26Router.grantRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i]);
+            console.log("Granted relayer role to %s", deployment.relayers[i]);
         }
 
         vm.stopBroadcast();

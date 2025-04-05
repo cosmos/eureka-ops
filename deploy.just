@@ -86,11 +86,11 @@ deploy-relayer-helper:
     forge script script/DeployRelayerHelper.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
-deploy-set-whitelisted-relayers:
+deploy-grant-relayer-role:
     #!/bin/bash
     set -euo pipefail
     export DEPLOYMENT_ENV={{environment}}
-    forge script script/SetWhitelistedRelayers.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+    forge script script/GrantRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-migrate-light-client:
