@@ -1,7 +1,22 @@
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
 sender := env_var_or_default("SENDER", "")
-export FOUNDRY_ETH_RPC_URL := if environment == "" { "" } else if chain == "" { "" } else { `jq -re '.rpc_url' deployments/$EUREKA_ENVIRONMENT/$EUREKA_CHAIN.json` }
+eth_rpc := env_var_or_default("ETH_RPC", "")
+
+export FOUNDRY_ETH_RPC_URL := eth_rpc
+export DEPLOYMENT_ENV := environment
+
+
+[group('verify')]
+[doc('Verifies contract deployments for <chain> in <environment>')]
+verify-deployment:
+    #!/bin/bash
+    set -eou pipefail
+    export VERIFY_ONLY=true
+    forge script script/DeployProxiedICS26Router.sol
+    forge script script/DeployProxiedICS20Transfer.sol
+    forge script script/DeploySP1ICS07Tendermint.sol
+
 
 [group('deploy-implementation')]
 [doc('Deploys a new implementation of Escrow')]
@@ -61,62 +76,76 @@ env-info:
 deploy-ics26-router:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/DeployProxiedICS26Router.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-ics20-transfer:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/DeployProxiedICS20Transfer.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-light-client:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-relayer-helper:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/DeployRelayerHelper.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-grant-relayer-role:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/GrantRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-migrate-light-client:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/MigrateLightClient.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-grant-metadata-role:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/GrantMetadataRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-set-metadata:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/SetTokenMetadata.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-grant-delegate-sender-role:
     #!/bin/bash
     set -euo pipefail
-    export DEPLOYMENT_ENV={{environment}}
     forge script script/GrantDelegateSenderRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
+[group('deploy')]
+deploy-grant-rate-limiter-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantRateLimiterRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-pauser-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantPauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-unpauser-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantUnpauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-revoke-relayer-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/RevokeRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify

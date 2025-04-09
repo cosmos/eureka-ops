@@ -12,6 +12,7 @@ soljson-latest.js
 docs/
 
 # Dotenv file
+.eureka-env
 .env
 node_modules/
 .idea/

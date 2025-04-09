@@ -61,14 +61,3 @@ update-operation:
     git fetch
     git pull origin $(git rev-parse --abbrev-ref HEAD)
 
-[group('verify')]
-[doc('Verifies contract deployments for <chain> in <environment>')]
-verify-deployment $environment $chain: (_verify-deployment environment chain `jq -re '.rpc_url' deployments/$environment/$chain.json`)
-_verify-deployment environment chain $FOUNDRY_ETH_RPC_URL:
-    #!/bin/bash
-    set -eou pipefail
-    export VERIFY_ONLY=true
-    export DEPLOYMENT_ENV={{environment}}
-    {{forge_command}} script script/DeployProxiedICS26Router.sol
-    {{forge_command}} script script/DeployProxiedICS20Transfer.sol
-    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol

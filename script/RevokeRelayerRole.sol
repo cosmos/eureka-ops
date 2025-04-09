@@ -11,27 +11,22 @@ import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import "forge-std/console.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
-contract GrantRelayerRole is Script, Deployments {
+contract RevokeRelayerRole is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
+        address relayerAddress = vm.promptAddress("Relayer address to revoke the role from");
+
         ProxiedICS26RouterDeployment memory deployment = loadProxiedICS26RouterDeployment(vm, json);
 
         ICS26Router ics26Router = ICS26Router(address(deployment.proxy));
 
         vm.startBroadcast();
-        for (uint256 i = 0; i < deployment.relayers.length; i++) {
-            if (ics26Router.hasRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i])) {
-                console.log("Relayer %s already has the role", deployment.relayers[i]);
-                continue;
-            }
 
-            ics26Router.grantRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i]);
-            console.log("Granted relayer role to %s", deployment.relayers[i]);
-        }
+        ics26Router.revokeRole(ics26Router.RELAYER_ROLE(), relayerAddress);
 
         vm.stopBroadcast();
     }
