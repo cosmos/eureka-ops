@@ -167,3 +167,35 @@ deploy-revoke-relayer-role:
     #!/bin/bash
     set -euo pipefail
     forge script script/RevokeRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-my-test:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GenerateRolesJSON.sol
+
+[group('deploy')]
+deploy-grant-role:
+    #!/bin/bash
+    set -euo pipefail
+    export FZF_DEFAULT_OPTS="--height=40%"
+    forge script script/GenerateRolesJSON.sol
+    contract=$(jq -r ". | keys[]" out/roles.json | fzf)
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/roles.json)
+    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/roles.json | fzf)
+    export GRANT_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/roles.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    forge script script/GrantRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-revoke-role:
+    #!/bin/bash
+    set -euo pipefail
+    export FZF_DEFAULT_OPTS="--height=40%"
+    forge script script/GenerateRolesJSON.sol
+    contract=$(jq -r ". | keys[]" out/roles.json | fzf)
+    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/roles.json)
+    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/roles.json | fzf)
+    export REVOKE_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/roles.json)
+    echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
+    forge script script/RevokeRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
