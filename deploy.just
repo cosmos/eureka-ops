@@ -142,7 +142,25 @@ deploy-grant-pauser-role:
 deploy-grant-unpauser-role:
     #!/bin/bash
     set -euo pipefail
-    forge script script/GrantUnpauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+    forge script script/GrantUnPauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-token-operator-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantTokenOperatorRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-port-customizer-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantPortCustomizerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
+deploy-grant-client-id-customizer-role:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantClientIDCustomizerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
 deploy-revoke-relayer-role:
