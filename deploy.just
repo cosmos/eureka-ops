@@ -97,12 +97,6 @@ deploy-relayer-helper:
     forge script script/DeployRelayerHelper.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
-deploy-grant-relayer-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
 deploy-migrate-light-client:
     #!/bin/bash
     set -euo pipefail
@@ -121,58 +115,10 @@ deploy-set-metadata:
     forge script script/SetTokenMetadata.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
-deploy-grant-delegate-sender-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantDelegateSenderRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
 deploy-grant-rate-limiter-role:
     #!/bin/bash
     set -euo pipefail
     forge script script/GrantRateLimiterRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-grant-pauser-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantPauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-grant-unpauser-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantUnPauserRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-grant-token-operator-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantTokenOperatorRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-grant-port-customizer-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantPortCustomizerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-grant-client-id-customizer-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantClientIDCustomizerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-revoke-relayer-role:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/RevokeRelayerRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
-
-[group('deploy')]
-deploy-my-test:
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GenerateRolesJSON.sol
 
 [group('deploy')]
 deploy-grant-role:
