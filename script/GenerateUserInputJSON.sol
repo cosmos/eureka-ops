@@ -4,16 +4,24 @@ pragma solidity ^0.8.28;
 import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol"; 
 import { stdJson } from "forge-std/StdJson.sol";
 
+library UserInputConstants {
+     string public constant ICS26_ROUTER_IMPL = "ICS26Router";
+     string public constant ICS20_TRANSFER_IMPL = "ICS20Transfer";
+     string public constant ESCROW_IMPL = "Escrow";
+     string public constant IBCERC20_IMPL = "IBCERC20";
+}
+
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
-contract GenerateRolesJSON is Script, Deployments {
+contract GenerateUserInputJSON is Script, Deployments {
     using stdJson for string;
+
 
     function run() public {
         string memory root = vm.projectRoot();
@@ -33,6 +41,13 @@ contract GenerateRolesJSON is Script, Deployments {
         string memory ics26RoleRootKey = "ics26roles";
         string memory ics20RootKey = "ics20root";
         string memory ics20RoleRootKey = "ics20roles";
+
+        // Implementations
+        string[] memory implementations = new string[](4);
+        implementations[0] = UserInputConstants.ICS26_ROUTER_IMPL;
+        implementations[1] = UserInputConstants.ICS20_TRANSFER_IMPL;
+        implementations[2] = UserInputConstants.ESCROW_IMPL;
+        implementations[3] = UserInputConstants.IBCERC20_IMPL;
 
         // ICS26 Roles
         vm.serializeAddress(ics26RootKey, "contract_address", ics26RouterDeployment.proxy);
@@ -57,9 +72,9 @@ contract GenerateRolesJSON is Script, Deployments {
         string memory ics20Roles = vm.serializeBytes32(ics20RoleRootKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
         string memory ics20Json = vm.serializeString(ics20RootKey, "roles", ics20Roles);
 
-
+        vm.serializeString("root", "implementations", implementations);
         vm.serializeString("root", "ICS26 Router", ics26Json);
         string memory finalJson = vm.serializeString("root", "ICS20 Transfer", ics20Json);
-        vm.writeJson(finalJson, "out/roles.json");
+        vm.writeJson(finalJson, "out/userinput.json");
     }
 }

@@ -43,13 +43,11 @@ new-operation operation environment chain:
     cp runbooks/{{operation}}.md $dir/RUNBOOK.md
     git add $dir/RUNBOOK.md
 
-    rm -f .eureka-env
-    echo "EUREKA_ENVIRONMENT={{environment}}" >> .eureka-env
-    echo "EUREKA_CHAIN={{chain}}" >> .eureka-env
-
     git commit -m "chore: start operation $operation_name"
     # git push origin operations/$operation_name
     bun install
+
+    echo "Remember to update .eureka-env with the correct environment and chain"
 
 [group('operations')]
 join-operation branch:
@@ -60,4 +58,3 @@ join-operation branch:
 update-operation:
     git fetch
     git pull origin $(git rev-parse --abbrev-ref HEAD)
-

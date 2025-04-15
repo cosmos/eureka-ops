@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 // solhint-disable custom-errors,gas-custom-errors
 
 import "forge-std/console.sol";
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/SP1ICS07Tendermint.sol";
 import { ISP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/ISP1ICS07Tendermint.sol";
 import { stdJson } from "forge-std/StdJson.sol";

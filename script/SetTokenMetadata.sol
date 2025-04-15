@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";

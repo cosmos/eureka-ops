@@ -1,12 +1,12 @@
-_schedule-erc1967-upgrade-params safe_address nonce type: env-info
+_schedule-erc1967-upgrade-params type: env-info
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
-  newImplementation=$(echo $deployment | jq -re ".ics20Transfer.implementation")
+  newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
-  calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
-  minDelay=$({{cast_binary}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
+  calldata=$(cast calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
+  # minDelay=$(cast call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -14,15 +14,15 @@ _schedule-erc1967-upgrade-params safe_address nonce type: env-info
   echo "data: $calldata"
   echo "predecessor: 0x"
   echo "salt: 0x"
-  echo "delay: $minDelay"
+  # echo "delay: $minDelay"
 
 _execute-erc1967-upgrade-params safe_address nonce type: env-info
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timeLockAdmin")
-  proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
+  newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
+  proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
   calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
 
   echo "function: chedule"
@@ -36,7 +36,7 @@ _execute-erc1967-upgrade-params safe_address nonce type: env-info
   {{just}} _get_offline_safe_message_hash {{safe_address}} {{nonce}} $timelockAdmin $data
 
 
-_schedule-beacon-upgrade-params safe_address nonce sig type:
+_schedule-beacon-upgrade-params sig type:
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
@@ -76,20 +76,20 @@ _execute-beacon-upgrade-params safe_address nonce sig type:
 [group('upgrade-params')]
 execute-ics20transfer-upgrade-params safe_address nonce: (_execute-erc1967-upgrade-params safe_address nonce "ics20Transfer")
 [group('upgrade-params')]
-schedule-ics20transfer-upgrade-params safe_address nonce: (_schedule-erc1967-upgrade-params safe_address nonce "ics20Transfer")
+schedule-ics20transfer-upgrade-params: (_schedule-erc1967-upgrade-params "ics20Transfer")
 [group('upgrade-params')]
 execute-ics26router-upgrade-params safe_address nonce: (_execute-erc1967-upgrade-params safe_address nonce "ics26Router")
 [group('upgrade-params')]
-schedule-ics26router-upgrade-params safe_address nonce: (_schedule-erc1967-upgrade-params safe_address nonce "ics26Router")
+schedule-ics26router-upgrade-params: (_schedule-erc1967-upgrade-params "ics26Router")
 
 [group('upgrade-params')]
 execute-ibcerc20-upgrade-params safe_address nonce: (_execute-beacon-upgrade-params safe_address nonce UPGRADE_IBC_ERC20_SIG "ibcERC20")
 [group('upgrade-params')]
-schedule-ibcerc20-upgrade-params safe_address nonce: (_schedule-beacon-upgrade-params safe_address nonce UPGRADE_IBC_ERC20_SIG "ibcERC20")
+schedule-ibcerc20-upgrade-params: (_schedule-beacon-upgrade-params UPGRADE_IBC_ERC20_SIG "ibcERC20")
 [group('upgrade-params')]
 execute-escrow-upgrade-params safe_address nonce: (_execute-beacon-upgrade-params safe_address nonce UPGRADE_ESCROW_SIG "escrow")
 [group('upgrade-params')]
-schedule-escrow-upgrade-params safe_address nonce: (_schedule-beacon-upgrade-params safe_address nonce UPGRADE_ESCROW_SIG "escrow")
+schedule-escrow-upgrade-params: (_schedule-beacon-upgrade-params UPGRADE_ESCROW_SIG "escrow")
 
 [group('upgrade-params')]
 schedule-light-client-upgrade-params safe_address nonce oldClientIndex newClientIndex:

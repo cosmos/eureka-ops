@@ -11,11 +11,11 @@
 ### Runbook
 1. Facilitator creates a new operations report and branch by calling `just new-operation upgrade-ics-26 <environment> <chain_id>`
    1. This is going to be our canonical branch for the length of this operation
-   2. The facilitator makes sure that a `.eureka-env` file got created as part of this command.
+   2. The facilitator makes sure that their `.eureka-env` file is set up correctly for the environment and chain.
 2. The facilitator sends signers the operation branch name.
-3. Signers run `cd eureka-ops && just join-operation <operation_branch>`
-4. Facilitator deploys a new ICS26Router contract by calling `just deploy-ics26-router`
-5. Facilitator checks that the implementation address changed by running `just verify-deployment <environment> <chain_id>`
+3. Signers run `cd eureka-ops && just join-operation <operation_branch>` (they will also need to have the `eureka-env` file set up correctly)
+4. Facilitator deploys a new ICS26Router contract by calling `just deploy-implementation` and selecting ICS26Router
+5. Facilitator updates implementation address in the `deployments/<environment>/<chain>.json` and runs `just verify-deployment <environment> <chain_id>`
    1. If the address changed, the verification should fail
 6. Signers should pull the new updates by calling `just update-operation`
 7. ? Signers independently verify that the deployed bytecode matches the patched ics26 contract
