@@ -1,7 +1,7 @@
 {
   "ics26Router": {
     "clientIdCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
-    "implementation": "0x26f6d3d58438f26c455Cc523ACAa86F1497aD436",
+    "implementation": "0xd93d291A55731746C7092815370AEb6DABeCc35B",
     "portCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
     "proxy": "0x3fcBB8b5d85FB5F77603e11536b5E90FeE37e6c0",
     "relayers": [
