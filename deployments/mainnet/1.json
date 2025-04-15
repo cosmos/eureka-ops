@@ -1,8 +1,8 @@
 {
   "ics26Router": {
-    "clientIdCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "clientIdCustomizer": "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
     "implementation": "0x0a8b3f2ceeda13a9fb3dab2446ce8ec85dd2479d",
-    "portCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "portCustomizer": "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
     "proxy": "0x3aF134307D5Ee90faa2ba9Cdba14ba66414CF1A7",
     "relayers": [
       "0xC4C09A23dDBd1fF0f313885265113F83622284C2",
@@ -26,7 +26,7 @@
     ],
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     "proxy": "0xa348CfE719B63151F228e3C30EB424BA5a983012",
-    "tokenOperator": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
+    "tokenOperator": "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
     "unpausers": [
       "0x7B96CD54aA750EF83ca90eA487e0bA321707559a"
     ]
