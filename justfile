@@ -6,21 +6,8 @@ import 'upgrade.just'
 set dotenv-load
 set dotenv-filename := ".eureka-env"
 
-ledger := "false"
-export broadcast := "false"
-private_key := ""
-debug := "false"
-
-ledger_flag := if ledger == "true" { " --ledger" } else { "" }
-broadcast_flag := if broadcast == "true" { " --broadcast" } else { "" }
-private_key_flag := if private_key != "" { " --private-key " + private_key } else { "" }
-debug_flag := if debug == "true" { " -vvvvv" } else { "" }
-
-forge_flags := ledger_flag + broadcast_flag + private_key_flag + debug_flag
-forge_command := forge_binary
-
 default:
-    {{just}} --list
+    just --list
 
 [group('operations')]
 [doc('Creates a new operation doc')]
@@ -44,7 +31,7 @@ new-operation operation environment chain:
     git add $dir/RUNBOOK.md
 
     git commit -m "chore: start operation $operation_name"
-    # git push origin operations/$operation_name
+    git push origin operations/$operation_name
     bun install
 
     echo "Remember to update .eureka-env with the correct environment and chain"

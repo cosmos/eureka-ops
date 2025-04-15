@@ -6,7 +6,7 @@ _schedule-erc1967-upgrade-params type: env-info
   newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
   calldata=$(cast calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation)
-  # minDelay=$(cast call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
+  minDelay=$(cast call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
 
   echo "function: schedule"
   echo "to: $proxy"
@@ -14,7 +14,7 @@ _schedule-erc1967-upgrade-params type: env-info
   echo "data: $calldata"
   echo "predecessor: 0x"
   echo "salt: 0x"
-  # echo "delay: $minDelay"
+  echo "delay: $minDelay"
 
 _execute-erc1967-upgrade-params safe_address nonce type: env-info
   #!/bin/bash
