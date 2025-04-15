@@ -106,10 +106,10 @@ test-user-input-generation:
 deploy-grant-role: _verify-solidity-version _generate-user-input
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ". | keys[]" out/roles.json | fzf)
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/roles.json)
-    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/roles.json | fzf)
-    export GRANT_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/roles.json)
+    contract=$(jq -r ". | keys[]" out/userinput.json | fzf)
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/userinput.json)
+    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/userinput.json | fzf)
+    export GRANT_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/userinput.json)
     echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
     forge script script/GrantRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
@@ -117,10 +117,10 @@ deploy-grant-role: _verify-solidity-version _generate-user-input
 deploy-revoke-role: _verify-solidity-version _generate-user-input
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ". | keys[]" out/roles.json | fzf)
-    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/roles.json)
-    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/roles.json | fzf)
-    export REVOKE_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/roles.json)
+    contract=$(jq -r ". | keys[]" out/userinput.json | fzf)
+    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/userinput.json)
+    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/userinput.json | fzf)
+    export REVOKE_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/userinput.json)
     echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
     forge script script/RevokeRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
