@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 // solhint-disable custom-errors,gas-custom-errors
 
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { IIBCUUPSUpgradeable } from "solidity-ibc-eureka/contracts/interfaces/IIBCUUPSUpgradeable.sol";
@@ -11,7 +11,6 @@ import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
 import { Script } from "forge-std/Script.sol";
-
 
 abstract contract DeployProxiedICS26Router is Deployments {
     using stdJson for string;

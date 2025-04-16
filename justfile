@@ -6,21 +6,8 @@ import 'upgrade.just'
 set dotenv-load
 set dotenv-filename := ".eureka-env"
 
-ledger := "false"
-export broadcast := "false"
-private_key := ""
-debug := "false"
-
-ledger_flag := if ledger == "true" { " --ledger" } else { "" }
-broadcast_flag := if broadcast == "true" { " --broadcast" } else { "" }
-private_key_flag := if private_key != "" { " --private-key " + private_key } else { "" }
-debug_flag := if debug == "true" { " -vvvvv" } else { "" }
-
-forge_flags := ledger_flag + broadcast_flag + private_key_flag + debug_flag
-forge_command := forge_binary
-
 default:
-    {{just}} --list
+    just --list
 
 [group('operations')]
 [doc('Creates a new operation doc')]
@@ -43,13 +30,11 @@ new-operation operation environment chain:
     cp runbooks/{{operation}}.md $dir/RUNBOOK.md
     git add $dir/RUNBOOK.md
 
-    rm -f .eureka-env
-    echo "EUREKA_ENVIRONMENT={{environment}}" >> .eureka-env
-    echo "EUREKA_CHAIN={{chain}}" >> .eureka-env
-
     git commit -m "chore: start operation $operation_name"
-    # git push origin operations/$operation_name
+    git push origin operations/$operation_name
     bun install
+
+    echo "Remember to update .eureka-env with the correct environment and chain"
 
 [group('operations')]
 join-operation branch:
@@ -60,15 +45,3 @@ join-operation branch:
 update-operation:
     git fetch
     git pull origin $(git rev-parse --abbrev-ref HEAD)
-
-[group('verify')]
-[doc('Verifies contract deployments for <chain> in <environment>')]
-verify-deployment $environment $chain: (_verify-deployment environment chain `jq -re '.rpc_url' deployments/$environment/$chain.json`)
-_verify-deployment environment chain $FOUNDRY_ETH_RPC_URL:
-    #!/bin/bash
-    set -eou pipefail
-    export VERIFY_ONLY=true
-    export DEPLOYMENT_ENV={{environment}}
-    {{forge_command}} script script/DeployProxiedICS26Router.sol
-    {{forge_command}} script script/DeployProxiedICS20Transfer.sol
-    {{forge_command}} script script/DeploySP1ICS07Tendermint.sol

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";

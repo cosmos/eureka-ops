@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 // solhint-disable custom-errors,gas-custom-errors
 
 import { Script } from "forge-std/Script.sol";
-import { Deployments } from "solidity-ibc-eureka/scripts/helpers/Deployments.sol";
+import { Deployments } from "./helpers/Deployments.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IBeacon } from "@openzeppelin-contracts/proxy/beacon/IBeacon.sol";
 import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
