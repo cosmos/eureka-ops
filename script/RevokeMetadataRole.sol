@@ -10,19 +10,19 @@ import { IIBCERC20 } from "solidity-ibc-eureka/contracts/interfaces/IIBCERC20.so
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
-contract GrantMetadataRole is Script, Deployments {
+contract RevokeMetadataRole is Script, Deployments {
     function run() public {
         address ibcERC20Address = vm.promptAddress("IBCERC20 address");
-        address metadataCustomizerAddress = vm.promptAddress("Grantee to grant metadata customizer role");
+        address metadataCustomizerAddress = vm.promptAddress("Grantee to revoke metadata customizer role");
 
-        bytes memory cData = abi.encodeCall(IIBCERC20.grantMetadataCustomizerRole, (metadataCustomizerAddress));
+        bytes memory cData = abi.encodeCall(IIBCERC20.revokeMetadataCustomizerRole, (metadataCustomizerAddress));
 
         console.log("calldata", vm.toString(cData));
 
         vm.startBroadcast();
 
         (bool success,) = address(ibcERC20Address).call(cData);
-        require(success, "Failed to grant metadata customizer role");
+        require(success, "Failed to revoke metadata customizer role");
 
         vm.stopBroadcast();
     }

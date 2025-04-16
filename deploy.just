@@ -85,6 +85,12 @@ deploy-grant-metadata-role: _verify-solidity-version
     forge script script/GrantMetadataRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
 [group('deploy')]
+deploy-revoke-metadata-role: _verify-solidity-version
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/RevokeMetadataRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
+
+[group('deploy')]
 deploy-set-metadata: _verify-solidity-version
     #!/bin/bash
     set -euo pipefail
