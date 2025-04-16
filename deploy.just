@@ -130,3 +130,8 @@ deploy-revoke-role: _verify-solidity-version _generate-user-input
     echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
     forge script script/RevokeRole.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
 
+[group('deploy')]
+deploy-replace-timelock-admin: _verify-solidity-version
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/ReplaceTimelockAdmin.sol -vvvv --broadcast --ledger --sender {{sender}} --verify
