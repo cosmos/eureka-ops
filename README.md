@@ -26,7 +26,7 @@ To set yours up, copy the `.eureka-env.example` file and fill in the values, acc
 The functionality of this repo is implemented through Just recipes (which are somewhat similar to Make targets).
 To see available recipes, run:
 ```shell
-$ just --list
+just --list
 ```
 
 ## Manual verification instructions
@@ -41,7 +41,7 @@ To verify that the Ethereum Light on the hub is running a specific version of th
 2. Get the binary checksum by running `gunzip -c path/to/cw_ics08_wasm_eth.wasm.gz | sha256sum`
 3. Fetch the checksum of the Ethereum light client (example below for Cosmos Hub mainnet, where the Ethereum light client ID is `08-wasm-1369`) and convert it from base64 to hex:
     ```shell
-    $ gaiad q ibc client state 08-wasm-1369 --output json | jq -r ".client_state.checksum" | base64 --decode | xxd -p -c 32
+    gaiad q ibc client state 08-wasm-1369 --output json | jq -r ".client_state.checksum" | base64 --decode | xxd -p -c 32
     ```
 4. Verify that the output from step 2 matches the output from step 3
 
