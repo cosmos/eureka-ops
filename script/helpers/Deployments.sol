@@ -75,7 +75,7 @@ abstract contract Deployments {
     struct ProxiedICS26RouterDeployment {
         address implementation;
         address proxy;
-        address timeLockAdmin;
+        address timelockAdmin;
         address portCustomizer;
         address clientIdCustomizer;
         address[] relayers;
@@ -92,7 +92,7 @@ abstract contract Deployments {
         ProxiedICS26RouterDeployment memory fixture = ProxiedICS26RouterDeployment({
             implementation: vm.parseJsonAddress(json, ".ics26Router.implementation"),
             proxy: vm.parseJsonAddress(json, ".ics26Router.proxy"),
-            timeLockAdmin: vm.parseJsonAddress(json, ".ics26Router.timeLockAdmin"),
+            timelockAdmin: vm.parseJsonAddress(json, ".ics26Router.timelockAdmin"),
             portCustomizer: vm.parseJsonAddress(json, ".ics26Router.portCustomizer"),
             clientIdCustomizer: vm.parseJsonAddress(json, ".ics26Router.clientIdCustomizer"),
             relayers: vm.parseJsonAddressArray(json, ".ics26Router.relayers")

@@ -45,16 +45,28 @@ To verify that the Ethereum Light on the hub is running a specific version of th
     ```
 4. Verify that the output from step 2 matches the output from step 3
 
-## Updating IBCERC20 Metadata
+## Deployment scripts
+
+TODO: Document deploy group scripts
+
+## Ops scripts
+
+TODO: Document ops group script
+
+### Updating IBCERC20 Metadata
 
 > ⚠️ Only a wallet with the Token Operator role is able to update the IBCERC20 Metadata
 
 To update the Metadata for an IBCERC20 contract, you need to do the following:
 1. Grant the metadata role for the IBCERC20 contract with:
     ```bash
-    just deploy-grant-metadata-role # You will be prompted for the IBCERC20 Address and the address of the grantee
+    just ops-grant-metadata-role # You will be prompted for the IBCERC20 Address and the address of the grantee
     ```
 2. Set the metadata:
     ```bash
-    just deploy-set-metadata # You will be prompted for the IBCERC20 Address to update and the values to set
+    just ops-set-metadata # You will be prompted for the IBCERC20 Address to update and the values to set
     ```
+
+## Timelock scripts
+
+TODO: Document timelock scripts

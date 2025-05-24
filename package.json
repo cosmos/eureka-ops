@@ -7,15 +7,14 @@
     "url": "https://github.com/cosmos"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.2.0",
-    "@openzeppelin/contracts-upgradeable": "^5.2.0",
-    "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#solidity-v1.1.0",
-    "@uniswap/permit2": "github:Uniswap/permit2"
+    "@openzeppelin/contracts": "^5.3.0",
+    "@openzeppelin/contracts-upgradeable": "^5.3.0",
+    "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#00e0332b6c327c78d3aa905e288dd43e513bb002"
   },
   "devDependencies": {
     "sp1-contracts": "github:succinctlabs/sp1-contracts#v4.0.0",
     "forge-std": "github:foundry-rs/forge-std#v1.9.6",
-    "solhint": "^5.0.5",
+    "solhint": "^5.1.0",
     "@defi-wonderland/natspec-smells": "^1.1.6"
   },
   "keywords": [
