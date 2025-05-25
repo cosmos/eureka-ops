@@ -1,9 +1,11 @@
+_private_key_not_set := "PRIVATE_KEY-NOT-SET"
+
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
 sender := env_var_or_default("SENDER", "")
 eth_rpc := env_var_or_default("ETH_RPC", "")
-private_key := env_var_or_default("PRIVATE_KEY", "")
-wallet := if private_key != "" { "--private-key " + private_key } else { "--ledger --sender " + sender }
+private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
+wallet := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
 
 broadcast_flags := "--broadcast --verify " + wallet
@@ -27,7 +29,15 @@ env-info:
     echo "Broadcast Flags: {{broadcast_flags}}" | sed -e "s/{{private_key}}/***REDACTED***/g"
     echo "Timelock Flags: {{timelock_flags}}"
 
-_clean-and-build:
+admin-info: _generate-script-helper
+    #!/bin/bash
+    set -eou pipefail
+    is_timelock=$(jq -r ".settings.admin_is_timelock_controller" out/scriptHelper.json)
+    echo "Admin Information for {{environment}} on {{chain}}:"
+    echo "Admin address (ics26Router.timelockAdmin): {{timelock_controller}}"
+    echo "Admin is Timelock Controller script: $is_timelock"
+
+_clean-and-build: && _generate-script-helper
     #!/bin/bash
     set -eou pipefail
     echo "Cleaning up..."
@@ -38,7 +48,7 @@ _clean-and-build:
 _confirm-settings:
     #!/bin/bash
     set -eou pipefail
-    echo "You are about to run a deployment with the following settings:"
+    echo "You are about to run a script with the following settings:"
     just env-info
     read -p "Please confirm: (y/n) " -n 1 -r
     echo    # (optional) move to a new line
@@ -135,6 +145,12 @@ deploy-relayer-helper: _pre-deploy
     set -euo pipefail
     forge script script/DeployRelayerHelper.sol -vvvv {{broadcast_flags}}
 
+[group('timelock')]
+deploy-replace-timelock-admin: _pre-deploy
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/ReplaceTimelockAdmin.sol -vvvv {{broadcast_flags}}
+
 # Operation scripts signed and broadcasted locally
 
 [group('ops')]
@@ -198,7 +214,7 @@ timelock-migrate-light-client: _pre-deploy
     forge script script/MigrateLightClient.sol -vvvv {{timelock_flags}}
 
 [group('timelock')]
-deploy-replace-timelock-admin: _pre-deploy
+timelock-replace-timelock-admin: _pre-deploy
     #!/bin/bash
     set -euo pipefail
     forge script script/ReplaceTimelockAdmin.sol -vvvv {{timelock_flags}}

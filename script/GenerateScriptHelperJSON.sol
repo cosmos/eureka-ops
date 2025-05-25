@@ -45,9 +45,17 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         string memory ics20RolesKey = "ics20RolesKey";
 
         // Settings
-        TimelockController timelockController = TimelockController(payable(ics26RouterDeployment.timelockAdmin));
-        uint256 delay = timelockController.getMinDelay();
-        vm.serializeUint(settingsKey, "timelock_delay", delay);
+        bool isTimelockController = false;
+        // If the address is an EOA, the code length will be 0. Otherwise, we can assume it's a timelock controller.
+        if (ics26RouterDeployment.timelockAdmin.code.length != 0) {
+            isTimelockController = true;
+
+            TimelockController timelockController = TimelockController(payable(ics26RouterDeployment.timelockAdmin));
+            uint256 delay = timelockController.getMinDelay();
+            vm.serializeUint(settingsKey, "timelock_delay", delay);
+
+        }
+        string memory settings = vm.serializeBool(settingsKey, "admin_is_timelock_controller", isTimelockController);
 
         // Implementations
         string[] memory implementations = new string[](4);
@@ -87,6 +95,7 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS26_ROUTER_NAME, ics26Json);
         string memory deployments = vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS20_TRANSFER_NAME, ics20Json);
 
+        vm.serializeString("root", "settings", settings);
         vm.serializeString("root", "implementations", implementations);
         string memory finalJson = vm.serializeString("root", "deployments", deployments);
         vm.writeJson(finalJson, "out/scriptHelper.json");

@@ -15,7 +15,7 @@
       "0x4bc16fEC05B2D9Fa72AdE54BB25A464a20D0D49b",
       "0xeB128b9893aDCf2F6C6305160e57b7Beab9A09AF"
     ],
-    "timelockAdmin": "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+    "timelockAdmin": "0x8948ca6bB5E2F50A235DB3eFf7c125188c6AD14b"
   },
   "ics20Transfer": {
     "escrowImplementation": "0x7f21A4Dcb70Aa0d19F713DA65084379c64DCfdBD",

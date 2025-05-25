@@ -26,5 +26,8 @@ contract ReplaceTimelockAdmin is Script, Deployments {
         ics26Router.setTimelockedAdmin(newTimelockAdmin);
 
         vm.stopBroadcast();
+
+        // Update the deployment JSON
+        vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".ics26Router.timelockAdmin");
     }
 }
