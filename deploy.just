@@ -8,7 +8,8 @@ private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 wallet := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 _timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
 
-_broadcast_flags := "--broadcast --verify " + wallet
+_verify_flags  := "--verify --retries 10 --delay 10"
+_broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
 _timelock_flags := "--sender " + _timelock_controller
 
 export FOUNDRY_ETH_RPC_URL := eth_rpc
