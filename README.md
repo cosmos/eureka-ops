@@ -70,3 +70,13 @@ To update the Metadata for an IBCERC20 contract, you need to do the following:
 ## Timelock scripts
 
 TODO: Document timelock scripts
+
+### Upgrade proxy
+
+Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (ICS26Router for instance).
+
+Run the script to generate the information needed to submit a proposal to the Safe Wallet:
+```bash
+just timelock-upgrade-proxy
+```
+

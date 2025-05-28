@@ -32,7 +32,7 @@ contract UpgradeProxy is Script, Deployments {
         bool ics20Changed = ics20ActualImpl != ics20TransferDeployment.implementation;
 
         // Ensure that only one of the contracts has changed
-        require(ics26Changed != ics20Changed, "One of the uups upgradable contract implementations should have changed in the deployment json to run this script");
+        require(ics26Changed != ics20Changed, "One (and only one) of the uups upgradable contract implementations should have changed in the deployment json to run this script");
 
         vm.startBroadcast();
         if (ics26Changed) {
