@@ -14,6 +14,7 @@ _timelock_flags := "--sender " + _timelock_controller
 
 export FOUNDRY_ETH_RPC_URL := eth_rpc
 export DEPLOYMENT_ENV := environment
+export FZF_DEFAULT_OPTS := "--height=40%"
 
 [group('info')]
 info-env:
@@ -53,7 +54,7 @@ info-timelock:
     echo "Predecessor: 0x"
     echo "Salt: 0x"
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
-    just _copy-abi-to-clipboard "TimelockController"
+    just copy-abi-to-clipboard "TimelockController"
 
 
 _clean-and-build: && _generate-script-helper
@@ -64,11 +65,14 @@ _clean-and-build: && _generate-script-helper
     forge clean
     forge build
 
-_confirm-settings:
+_confirm-settings script_flags:
     #!/bin/bash
     set -eou pipefail
     echo "You are about to run a script with the following settings:"
     just info-env
+    echo
+    echo "Script flags to be used: {{script_flags}}"
+    echo
     read -p "Please confirm: (y/n) " -n 1 -r
     echo    # (optional) move to a new line
     if [[ ! $REPLY =~ ^[Yy]$ ]]
@@ -77,7 +81,11 @@ _confirm-settings:
         exit 1
     fi
 
-_pre-deploy: _clean-and-build _confirm-settings
+_pre-script script_flags: _clean-and-build (_confirm-settings script_flags)
+    #!/bin/bash
+    set -eou pipefail
+    echo "Pre-script checks completed. Proceeding with script execution..."
+    echo "Script flags: {{script_flags}}"
 
 # Generate user input JSON file that can be used for fzf selection
 _generate-script-helper:
@@ -94,16 +102,15 @@ test-generate-script-helper: _clean-and-build _generate-script-helper
 print-abi: _clean-and-build
     #!/bin/bash
     set -eou pipefail
-    export FZF_DEFAULT_OPTS="--height=40%"
     contract_file_name=$(ls out | fzf)
     contract_name=${contract_file_name%".sol"}
     abi=$(jq ".abi" out/$contract_file_name/$contract_name.json)
     echo "Printing ABI for ${contract_name}..."
     echo ""
     echo $abi
-    just _copy-abi-to-clipboard $contract_name
+    just copy-abi-to-clipboard $contract_name
 
-_copy-abi-to-clipboard contract_name:
+copy-abi-to-clipboard contract_name:
     #!/bin/bash
     set -eou pipefail
     abi=$(jq ".abi" out/{{contract_name}}.sol/{{contract_name}}.json)
@@ -132,7 +139,7 @@ verify-deployment:
 # Deploy scripts signed and broadcasted locally
 
 [group('deploy')]
-deploy-implementation: _pre-deploy _generate-script-helper
+deploy-implementation: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     export LOGIC_CONTRACT=$(jq -r ".implementations[]" out/scriptHelper.json | fzf)
@@ -140,85 +147,100 @@ deploy-implementation: _pre-deploy _generate-script-helper
     echo "Take note of the implementation address above, and replace it in the deployment json file if you are planning to upgrade"
 
 [group('deploy')]
-deploy-timelock-controller: _pre-deploy
+deploy-timelock-controller: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeployTimelockController.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics26-router: _pre-deploy
+deploy-ics26-router: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeployProxiedICS26Router.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics20-transfer: _pre-deploy
+deploy-ics20-transfer: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeployProxiedICS20Transfer.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-light-client: _pre-deploy
+deploy-light-client: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-relayer-helper: _pre-deploy
+deploy-relayer-helper: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeployRelayerHelper.sol -vvvv {{_broadcast_flags}}
 
 [group('timelock')]
-deploy-replace-timelock-admin: _pre-deploy
+deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/ReplaceTimelockAdmin.sol -vvvv {{_broadcast_flags}}
 
+[group('deploy')]
+deploy-ibcerc20: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/DeployIBCERC20.sol -vvvv {{_broadcast_flags}}
+
 # Operation scripts signed and broadcasted locally
 
+# TODO: Extract all of these into private recipes, and create both ops and timelock versions
 [group('ops')]
-ops-grant-metadata-role: _pre-deploy
+ops-grant-rate-limiter-role: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/GrantRateLimiterRole.sol -vvvv {{_broadcast_flags}}
+
+[group('ops')]
+ops-grant-metadata-role: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/GrantMetadataRole.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
-ops-revoke-metadata-role: _pre-deploy
+ops-revoke-metadata-role: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/RevokeMetadataRole.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
-ops-set-metadata: _pre-deploy
+ops-set-metadata: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/SetTokenMetadata.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
-ops-grant-role: _pre-deploy _generate-script-helper
+ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
+
+_grant-role script_flags:
     #!/bin/bash
     set -euo pipefail
-    export FZF_DEFAULT_OPTS="--height=40%"
-    contract=$(jq -r ". | keys[]" out/scriptHelper.json | fzf)
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
-    export GRANT_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
     echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
-    forge script script/GrantRole.sol -vvvv {{_broadcast_flags}}
+    forge script script/GrantRole.sol -vvvv {{script_flags}}
+
 
 [group('ops')]
-ops-revoke-role: _pre-deploy _generate-script-helper
+ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    export FZF_DEFAULT_OPTS="--height=40%"
-    contract=$(jq -r ". | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_ROLE=$(jq -r ".[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf)
+    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
+    export REVOKE_ROLE=$(jq -r "deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
     echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
     forge script script/RevokeRole.sol -vvvv {{_broadcast_flags}}
-    
+
+
 # Timelock scripts signed and broadcasted by the timelock controller
 
 _post-timelock: info-timelock
@@ -233,27 +255,31 @@ _post-timelock: info-timelock
     echo "to = target"
     echo "input = data"
 
-[group('ops')]
-timelock-grant-rate-limiter-role: _pre-deploy && _post-timelock
+[group('timelock')]
+timelock-grant-rate-limiter-role: (_pre-script _timelock_flags) && _post-timelock
     #!/bin/bash
     set -euo pipefail
-    forge script script/GrantRateLimiterRole.sol -vvvv {{_broadcast_flags}}
+    forge script script/GrantRateLimiterRole.sol -vvvv {{_timelock_flags}}
 
 
 [group('timelock')]
-timelock-upgrade-proxy: _pre-deploy && _post-timelock
+timelock-upgrade-proxy: (_pre-script _timelock_flags) && _post-timelock
     #!/bin/bash
     set -euo pipefail
     forge script script/UpgradeProxy.sol -vvvv {{_timelock_flags}}
 
 [group('timelock')]
-timelock-migrate-light-client: _pre-deploy && _post-timelock
+timelock-migrate-light-client: (_pre-script _timelock_flags) && _post-timelock
     #!/bin/bash
     set -euo pipefail
     forge script script/MigrateLightClient.sol -vvvv {{_timelock_flags}}
 
 [group('timelock')]
-timelock-replace-timelock-admin: _pre-deploy && _post-timelock
+timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
     #!/bin/bash
     set -euo pipefail
     forge script script/ReplaceTimelockAdmin.sol -vvvv {{_timelock_flags}}
+
+[group('timelock')]
+timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
+

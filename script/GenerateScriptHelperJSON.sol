@@ -88,6 +88,7 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeBytes32(ics20RolesKey, "Pauser role", ics20Transfer.PAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Unpauser role", ics20Transfer.UNPAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Token Operator role", ics20Transfer.TOKEN_OPERATOR_ROLE());
+        vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", ics20Transfer.ERC20_CUSTOMIZER_ROLE());
         string memory ics20Roles = vm.serializeBytes32(ics20RolesKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
         string memory ics20Json = vm.serializeString(ics20Key, "roles", ics20Roles);
 

@@ -61,6 +61,8 @@ contract GrantRole is Script, Deployments {
             ics20Transfer.grantTokenOperatorRole(grantee);
         } else if (role == ics20Transfer.DELEGATE_SENDER_ROLE()) {
             ics20Transfer.grantDelegateSenderRole(grantee);
+        } else if (role == ics20Transfer.ERC20_CUSTOMIZER_ROLE()) {
+            ics20Transfer.grantERC20CustomizerRole(grantee);
         } else {
             revert("Invalid/unimplemented role");
         }
