@@ -88,7 +88,13 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeBytes32(ics20RolesKey, "Pauser role", ics20Transfer.PAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Unpauser role", ics20Transfer.UNPAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Token Operator role", ics20Transfer.TOKEN_OPERATOR_ROLE());
-        vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", ics20Transfer.ERC20_CUSTOMIZER_ROLE());
+        // TODO: Remove this once solidity v2.0.0 is deployed on mainnet
+        try ics20Transfer.ERC20_CUSTOMIZER_ROLE() returns (bytes32 erc20CustomizerRole) {
+            vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", erc20CustomizerRole);
+        } catch {
+            // If the role does not exist, do not serialize it
+        }
+        
         string memory ics20Roles = vm.serializeBytes32(ics20RolesKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
         string memory ics20Json = vm.serializeString(ics20Key, "roles", ics20Roles);
 

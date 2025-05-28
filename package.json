@@ -9,7 +9,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.3.0",
     "@openzeppelin/contracts-upgradeable": "^5.3.0",
-    "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#00e0332b6c327c78d3aa905e288dd43e513bb002"
+    "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#solidity-v2.0.0"
   },
   "devDependencies": {
     "sp1-contracts": "github:succinctlabs/sp1-contracts#v4.0.0",

@@ -23,22 +23,22 @@ contract DeployIBCERC20 is Script, Deployments {
 
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
 
-        string memory denom = vm.prompt("Base Denom on Cosmos side (e.g. uatom, transfer/channel-69/herpderp)");
+        // TODO: Prompt for name, symbol and decimals
+        string memory name = vm.prompt("Token Name");
         string memory clientId = vm.prompt("Client ID on Ethereum (destination client ID when sending from Cosmos)");
 
         // TODO: Ensure client ID exists
 
         ICS20Transfer ics20Transfer = ICS20Transfer(ics20TransferDeployment.proxy);
 
-        bytes memory denomPrefix = abi.encodePacked(ICS20Lib.DEFAULT_PORT_ID, "/", clientId, "/");
-        bytes memory fullDenomPath = abi.encodePacked(denomPrefix, bytes(denom));
         address escrow = ics20Transfer.getEscrow(clientId);
+        bytes memory initCalldata =  abi.encodeCall(IIBCERC20.initialize, (ics20TransferDeployment.proxy, escrow, name));
 
-        bytes memory initCalldata =  abi.encodeCall(IIBCERC20.initialize, (ics20TransferDeployment.proxy, escrow, string(fullDenomPath)));
-
+        vm.startBroadcast();
         ERC1967Proxy ibcerc20Proxy = new ERC1967Proxy(ics20TransferDeployment.ibcERC20Implementation, initCalldata);
+        vm.stopBroadcast();
 
-        console.log("Deployed IBCERC20 with ERC1967 Proxy at: ", address(ibcerc20Proxy));
-        console.log("Implementation address used: ", ics20TransferDeployment.ibcERC20Implementation);
+        console.log("Deployed IBCERC20 with ERC1967 Proxy at:", address(ibcerc20Proxy));
+        console.log("Implementation address used:", ics20TransferDeployment.ibcERC20Implementation);
     }
 }

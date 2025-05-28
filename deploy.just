@@ -218,6 +218,12 @@ ops-set-metadata: (_pre-script _broadcast_flags)
 [group('ops')]
 ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
 
+[group('ops')]
+ops-set-custom-erc20: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/SetCustomERC20.sol -vvvv {{_broadcast_flags}}
+
 _grant-role script_flags:
     #!/bin/bash
     set -euo pipefail
