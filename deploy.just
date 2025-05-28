@@ -219,20 +219,8 @@ ops-set-metadata: (_pre-script _broadcast_flags)
 ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
 
 [group('ops')]
-ops-set-custom-erc20: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/SetCustomERC20.sol -vvvv {{_broadcast_flags}}
+ops-set-custom-erc20: (_pre-script _broadcast_flags) (_set-custom-erc20 _broadcast_flags)
 
-_grant-role script_flags:
-    #!/bin/bash
-    set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
-    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
-    forge script script/GrantRole.sol -vvvv {{script_flags}}
 
 
 [group('ops')]
@@ -289,3 +277,19 @@ timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
 [group('timelock')]
 timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
 
+# Private reusable recipes
+
+_grant-role script_flags:
+    #!/bin/bash
+    set -euo pipefail
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    forge script script/GrantRole.sol -vvvv {{script_flags}}
+
+_set-custom-erc20 script_flags:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/SetCustomERC20.sol -vvvv {{script_flags}}
