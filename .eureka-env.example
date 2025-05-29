@@ -2,7 +2,14 @@ EUREKA_ENVIRONMENT=mainnet
 EUREKA_CHAIN=1
 ETH_RPC=https://ethereum-rpc.publicnode.com
 
-# `SENDER` is only necessary if you are going to run operations
+# `SENDER` address to be used in non-timelock operations
+# NOTE: Not used if PRIVATE_KEY is set, and will use ledger signing instead
+# Only necessary if you are going to run operations
 SENDER=0x0000000000000000000000000000000000000000
+
+# `PRIVATE_KEY` is the private key of the account that will be used to sign non-timelock operations
+# NOTE: If you set this, it will override the `SENDER` address, and ledger signing will not be used
+PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
+
 # `ETHERSCAN_API_KEY` is only necessary if you are going to deploy new contracts (for example, if you are the facilitator of a operation)
-ETHERSCAN_API_KEY=123
+ETHERSCAN_API_KEY=0000000000000000000000000000000000

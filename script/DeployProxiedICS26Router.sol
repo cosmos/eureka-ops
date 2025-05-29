@@ -16,11 +16,11 @@ abstract contract DeployProxiedICS26Router is Deployments {
     using stdJson for string;
 
     function deployProxiedICS26Router(Deployments.ProxiedICS26RouterDeployment memory deployment) public returns (ERC1967Proxy) {
-        require(msg.sender == deployment.timeLockAdmin, "sender must be timeLockAdmin");
+        require(msg.sender == deployment.timelockAdmin, "sender must be timelockAdmin");
 
         ERC1967Proxy routerProxy = new ERC1967Proxy(
             deployment.implementation,
-            abi.encodeCall(ICS26Router.initialize, (deployment.timeLockAdmin))
+            abi.encodeCall(ICS26Router.initialize, (deployment.timelockAdmin))
         );
 
         ICS26Router ics26Router = ICS26Router(address(routerProxy));
@@ -57,7 +57,7 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
 
         vm.assertEq(
             uups.getTimelockedAdmin(),
-            deployment.timeLockAdmin,
+            deployment.timelockAdmin,
             "timelockAdmin addresses don't match"
         );
 
@@ -125,7 +125,7 @@ contract DeployProxiedICS26RouterScript is Script, DeployProxiedICS26Router {
 
         vm.serializeAddress("ics26Router", "proxy", address(routerProxy));
         vm.serializeAddress("ics26Router", "implementation", deployment.implementation);
-        vm.serializeAddress("ics26Router", "timeLockAdmin", deployment.timeLockAdmin);
+        vm.serializeAddress("ics26Router", "timelockAdmin", deployment.timelockAdmin);
         vm.serializeAddress("ics26Router", "clientIdCustomizer", deployment.clientIdCustomizer);
         vm.serializeAddress("ics26Router", "portCustomizer", deployment.portCustomizer);
         vm.serializeAddress("ics26Router", "relayers", deployment.relayers);

@@ -15,7 +15,7 @@ import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
 import { Script } from "forge-std/Script.sol";
-import { UserInputConstants } from "./GenerateUserInputJSON.sol";
+import { ScriptHelperConstants } from "./GenerateScriptHelperJSON.sol";
 
 contract DeployImplementation is Script, Deployments {
     using Strings for string;
@@ -26,16 +26,16 @@ contract DeployImplementation is Script, Deployments {
         address implementation;
 
         vm.startBroadcast();
-        if (contractToDeploy.equal(UserInputConstants.ICS26_ROUTER_IMPL)) {
+        if (contractToDeploy.equal(ScriptHelperConstants.ICS26_ROUTER_NAME)) {
             console.log("Deploying ICS26Router implementation");
             implementation = address(new ICS26Router());
-        } else if (contractToDeploy.equal(UserInputConstants.ICS20_TRANSFER_IMPL)) {
+        } else if (contractToDeploy.equal(ScriptHelperConstants.ICS20_TRANSFER_NAME)) {
             console.log("Deploying ICS20Transfer implementation");
             implementation = address(new ICS20Transfer());
-        } else if (contractToDeploy.equal(UserInputConstants.ESCROW_IMPL)) {
+        } else if (contractToDeploy.equal(ScriptHelperConstants.ESCROW_NAME)) {
             console.log("Deploying Escrow implementation");
             implementation = address(new Escrow());
-        } else if (contractToDeploy.equal(UserInputConstants.IBCERC20_IMPL)) {
+        } else if (contractToDeploy.equal(ScriptHelperConstants.IBCERC20_NAME)) {
             console.log("Deploying IBCERC20 implementation");
             implementation = address(new IBCERC20());
         }

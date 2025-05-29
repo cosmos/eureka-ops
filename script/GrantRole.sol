@@ -21,6 +21,7 @@ contract GrantRole is Script, Deployments {
         string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
+
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
 
@@ -29,6 +30,12 @@ contract GrantRole is Script, Deployments {
         address grantee = vm.promptAddress("Grantee address");
 
         vm.startBroadcast();
+        bytes memory preCalldata = vm.envOr("PRE_CALLDATA", bytes(""));
+        if (preCalldata.length > 0) {
+            address preCallAddress = vm.envAddress("PRE_CALL_CONTRACT_ADDRESS");
+            (bool success,) = preCallAddress.call(preCalldata);
+            require(success, "Pre-call failed");
+        }
 
         if (contractAddress == ics26RouterDeployment.proxy) {
             grantGenericRole(role, contractAddress, grantee);
@@ -61,6 +68,8 @@ contract GrantRole is Script, Deployments {
             ics20Transfer.grantTokenOperatorRole(grantee);
         } else if (role == ics20Transfer.DELEGATE_SENDER_ROLE()) {
             ics20Transfer.grantDelegateSenderRole(grantee);
+        } else if (role == ics20Transfer.ERC20_CUSTOMIZER_ROLE()) {
+            ics20Transfer.grantERC20CustomizerRole(grantee);
         } else {
             revert("Invalid/unimplemented role");
         }

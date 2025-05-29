@@ -10,7 +10,7 @@ import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
-contract GrantMetadataRole is Script, Deployments {
+contract SetTokenMetadata is Script, Deployments {
     using SafeCast for uint256;
 
     function run() public {

@@ -22,11 +22,8 @@ abstract contract DeploySP1ICS07Tendermint is Deployments {
 
     function deploySP1ICS07Tendermint(SP1ICS07TendermintDeployment memory deployment)
         public
-        returns (
-            SP1ICS07Tendermint,
-            IICS07TendermintMsgs.ConsensusState memory,
-            IICS07TendermintMsgs.ClientState memory
-        )
+        returns (SP1ICS07Tendermint)
+        
     {
         IICS07TendermintMsgs.ConsensusState memory trustedConsensusState =
             abi.decode(deployment.trustedConsensusState, (IICS07TendermintMsgs.ConsensusState));
@@ -66,7 +63,7 @@ abstract contract DeploySP1ICS07Tendermint is Deployments {
             deployment.proofSubmitter
         );
 
-        return (ics07Tendermint, trustedConsensusState, trustedClientState);
+        return ics07Tendermint;
     }
 }
 
@@ -171,7 +168,7 @@ contract DeploySP1ICS07TendermintScript is DeploySP1ICS07Tendermint, Script {
 
             vm.startBroadcast();
 
-            (SP1ICS07Tendermint ics07Tendermint, ,) = deploySP1ICS07Tendermint(deployments[i]);
+            SP1ICS07Tendermint ics07Tendermint = deploySP1ICS07Tendermint(deployments[i]);
 
             deployments[i].implementation = address(ics07Tendermint);
             deployments[i].verifier = vm.toString(address(ics07Tendermint.VERIFIER()));

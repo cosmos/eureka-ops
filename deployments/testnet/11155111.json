@@ -1,7 +1,7 @@
 {
   "ics26Router": {
     "clientIdCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
-    "implementation": "0xd93d291A55731746C7092815370AEb6DABeCc35B",
+    "implementation": "0x812E603dAd2F01279cB2BC2714e1080F426cf888",
     "portCustomizer": "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
     "proxy": "0x3fcBB8b5d85FB5F77603e11536b5E90FeE37e6c0",
     "relayers": [
@@ -15,13 +15,13 @@
       "0x4bc16fEC05B2D9Fa72AdE54BB25A464a20D0D49b",
       "0xeB128b9893aDCf2F6C6305160e57b7Beab9A09AF"
     ],
-    "timeLockAdmin": "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+    "timelockAdmin": "0x8948ca6bB5E2F50A235DB3eFf7c125188c6AD14b"
   },
   "ics20Transfer": {
     "escrowImplementation": "0x7f21A4Dcb70Aa0d19F713DA65084379c64DCfdBD",
     "ibcERC20Implementation": "0x7576da473Dc7f54A51a4512eE12986c08545f688",
     "ics26Router": "0x3fcBB8b5d85FB5F77603e11536b5E90FeE37e6c0",
-    "implementation": "0xE3A1519b7C0889acf25D85cf33D3BFD4837cd6Eb",
+    "implementation": "0xC2A4961E3362C74b0A6B177F0d0E84057C557BA5",
     "pausers": [
       "0x64259f722A0868CCf58A935C61A292cEA9dF035a",
       "0xd401EF91b68745193dFFeA21Bdc703990fbb50d6",
