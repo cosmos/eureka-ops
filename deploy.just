@@ -133,6 +133,41 @@ verify-deployment:
     forge script script/DeployProxiedICS20Transfer.sol
     forge script script/DeploySP1ICS07Tendermint.sol
 
+[group('verify')]
+verify-safe-tx safe_address nonce target data:
+    #!/bin/bash
+    set -eou pipefail
+    domain_hash=$(chisel eval --json "keccak256(abi.encode({{eip712_separator_typehash}}, {{chain}}, {{safe_address}}))" | awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
+    schedule_data=$(cast calldata "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" {{target}} 0 {{data}} {{zero_bytes32}} {{zero_bytes32}} 60)
+    data_hashed=$(cast keccak "$schedule_data")
+    value="0"
+    operation="0"
+    safe_tx_gas="0"
+    base_gas="0"
+    gas_price="0"
+    gas_token="{{zero_address}}"
+    refund_receiver="{{zero_address}}"
+    message=$({{cast_binary}} abi-encode "SafeTxStruct(bytes32,address,uint256,bytes32,uint8,uint256,uint256,uint256,address,address,uint256)" \
+          "{{safe_tx_typehash}}" \
+          "{{_timelock_controller}}" \
+          "$value" \
+          "$data_hashed" \
+          "$operation" \
+          "$safe_tx_gas" \
+          "$base_gas" \
+          "$gas_price" \
+          "$gas_token" \
+          "$refund_receiver" \
+          "{{nonce}}")
+    message_hash=$(cast keccak "$message")
+    safe_tx_hash=$(chisel eval "keccak256(abi.encodePacked(bytes1(0x19), bytes1(0x01), bytes32($domain_hash), bytes32($message_hash)))" |
+        awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
+
+    echo "Domain Hash: $domain_hash"
+    echo "Message Hash: $message_hash"
+    echo "Safe Transaction Hash: $safe_tx_hash"
+
+
 # TODO: Consider splitting up the scripts between deploy, timelock stuff and operations
 # Maybe split by role (e.g. who runs the script, or rather what "hat" they are wearing when running the script)
 

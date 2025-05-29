@@ -29,6 +29,16 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
+        bytes memory preCalldata = vm.envOr("PRE_CALLDATA", bytes(""));
+        if (preCalldata.length > 0) {
+            address preCallAddress = vm.envAddress("PRE_CALL_CONTRACT_ADDRESS");
+            address preCaller = vm.envAddress("PRE_CALLER_ADDRESS");
+            vm.prank(preCaller);
+            (bool success,) = preCallAddress.call(preCalldata);
+            require(success, "Pre-call failed");
+        }
+
+
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
         SP1ICS07TendermintDeployment[] memory lightClientDeployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
@@ -88,12 +98,7 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeBytes32(ics20RolesKey, "Pauser role", ics20Transfer.PAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Unpauser role", ics20Transfer.UNPAUSER_ROLE());
         vm.serializeBytes32(ics20RolesKey, "Token Operator role", ics20Transfer.TOKEN_OPERATOR_ROLE());
-        // TODO: Remove this once solidity v2.0.0 is deployed on mainnet
-        try ics20Transfer.ERC20_CUSTOMIZER_ROLE() returns (bytes32 erc20CustomizerRole) {
-            vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", erc20CustomizerRole);
-        } catch {
-            // If the role does not exist, do not serialize it
-        }
+        vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", ics20Transfer.ERC20_CUSTOMIZER_ROLE());
         
         string memory ics20Roles = vm.serializeBytes32(ics20RolesKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
         string memory ics20Json = vm.serializeString(ics20Key, "roles", ics20Roles);
