@@ -1,4 +1,4 @@
-## RUNBOOK - upgrading ICS26Router contract
+## RUNBOOK - granting ERC20 customizer role
 
 ### Runbook
 1. The facilitator sends signers the operation branch name.
