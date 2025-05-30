@@ -15,7 +15,7 @@ _schedule-erc1967-upgrade-params type: info-env
   echo "predecessor: 0x"
   echo "salt: 0x"
   echo "delay: $minDelay"
-  data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+  data=$({{cast_binary}} calldata "schedule(address,uint256,bytes calldata,bytes32,bytes32,uint256)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}} $minDelay)
   echo "timelock calldata: $data"
 
 _execute-erc1967-upgrade-params safe_address nonce type: info-env
