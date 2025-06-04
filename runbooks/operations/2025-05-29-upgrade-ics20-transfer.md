@@ -22,4 +22,5 @@
 * Gnosis Safe - `0x7B96CD54aA750EF83ca90eA487e0bA321707559a`
 * Timelock address (can be confirmed by running `just info-env`) - `0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614`
 * New ICS20Transfer implementation [`0x4658c167824c000ea93d62f15b5c9bb53ee329fe`](https://etherscan.io/0x4658c167824c000ea93d62f15b5c9bb53ee329fe)
-* Nonce for this specific operation - `2`
+* Nonce for this operation's `schedule` transaction - `2`
+* Nonce for this operation's `execute` transaction - `6`
