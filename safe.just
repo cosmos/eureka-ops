@@ -1,10 +1,11 @@
+safe_address := "0x85CF98533e3275450a0d61D9BC236225947C5882"
 eip712_separator_typehash := "0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218"
 safe_tx_typehash := "0xbb8310d486368db6bd6f849402fdd73ad53d316b5a4b2644ad6efe0f941286d8"
 zero_address := "0x0000000000000000000000000000000000000000"
 zero_bytes32 := "0x0000000000000000000000000000000000000000000000000000000000000000"
 
 [group('safe_helpers')]
-get_safe_owners safe_address:
+get_safe_owners:
     #!/bin/bash
     set -euo pipefail
     owners=$({{cast_binary}} call {{safe_address}} "getOwners()(address[])")
@@ -12,22 +13,22 @@ get_safe_owners safe_address:
     echo $owners
 
 [group('safe_helpers')]
-get_safe_nonce safe_address:
+get_safe_nonce:
     #!/bin/bash
     set -euo pipefail
     nonce=$({{cast_binary}} call {{safe_address}} "nonce()(uint256)")
     echo $nonce
 
-_get_safe_domain_hash safe_address nonce:
+_get_safe_domain_hash nonce:
   #!/bin/bash
   set -euo pipefail
-  domain_hash=$({{chisel_binary}} eval --json "keccak256(abi.encode({{eip712_separator_typehash}}, {{chain}}, {{safe_address}}))" | awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
+  domain_hash=$(chisel eval --json "keccak256(abi.encode({{eip712_separator_typehash}}, {{chain}}, {{safe_address}}))" | awk '/Data:/ {gsub(/\x1b\[[0-9;]*m/, "", $3); print $3}')
   echo $domain_hash
   
-_get_safe_message_hash safe_address nonce data to:
+_get_safe_message_hash nonce data to:
   #!/bin/bash
-  set -euxo pipefail
-  data_hashed=$({{cast_binary}} keccak "{{data}}")
+  set -euo pipefail
+  data_hashed=$(cast keccak "{{data}}")
 
   value="0"
   operation="0"
@@ -52,7 +53,7 @@ _get_safe_message_hash safe_address nonce data to:
 
   echo $({{cast_binary}} keccak "$message")
 
-_get_safe_tx_hash safe_address nonce domain_hash message_hash:
+_get_safe_tx_hash nonce domain_hash message_hash:
   #!/bin/bash
   set -euo pipefail
   safe_tx_hash=$({{chisel_binary}} eval "keccak256(abi.encodePacked(bytes1(0x19), bytes1(0x01), bytes32({{domain_hash}}), bytes32({{message_hash}})))" |
@@ -60,13 +61,12 @@ _get_safe_tx_hash safe_address nonce domain_hash message_hash:
   echo $safe_tx_hash
 
 [group('verify-safe')]
-get_safe_hashes safe_address nonce data to:
+get_safe_hashes nonce data to:
   #!/bin/bash
   set -euo pipefail
-  echo "{{separator}}"
-  domain_hash=$({{just}} _get_safe_domain_hash {{safe_address}} {{nonce}})
-  message_hash=$({{just}} _get_safe_message_hash {{safe_address}} {{nonce}} {{data}} {{to}})
-  tx_hash=$({{just}} _get_safe_tx_hash {{safe_address}} {{nonce}} $domain_hash $message_hash)
+  domain_hash=$({{just}} _get_safe_domain_hash {{nonce}})
+  message_hash=$({{just}} _get_safe_message_hash {{nonce}} {{data}} {{to}})
+  tx_hash=$({{just}} _get_safe_tx_hash {{nonce}} $domain_hash $message_hash)
   echo "Message hash: $message_hash"
   echo "Domain hash: $domain_hash"
   echo "safeTxHash: $tx_hash"
