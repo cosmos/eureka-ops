@@ -76,7 +76,8 @@ _confirm-settings script_flags:
     echo "You are about to run a script with the following settings:"
     just info-env
     echo
-    echo "Script flags to be used: {{script_flags}}"
+    safe_script_flags=$(echo "{{script_flags}}" | sed -e "s/{{private_key}}/***REDACTED***/g")
+    echo "Script flags to be used: $safe_script_flags"
     echo
     read -p "Please confirm: (y/n) " -n 1 -r
     echo    # (optional) move to a new line
@@ -89,8 +90,9 @@ _confirm-settings script_flags:
 _pre-script script_flags: _build (_confirm-settings script_flags)
     #!/bin/bash
     set -eou pipefail
+    echo
     echo "Pre-script checks completed. Proceeding with script execution..."
-    echo "Script flags: {{script_flags}}"
+    echo {{separator}}
 
 # Generate user input JSON file that can be used for fzf selection
 _generate-script-helper:
