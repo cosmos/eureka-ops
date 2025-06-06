@@ -1,4 +1,4 @@
-## RUNBOOK - upgrading ICS26Router contract
+## RUNBOOK - granting ERC20 customizer role
 
 ### Runbook
 1. The facilitator sends signers the operation branch name.
@@ -8,7 +8,9 @@
 5. The signers independently verify that the transaction hashes match what is expected on their hardware wallets by running `just get_safe_hashes <safe_address> <nonce> <timelock_calldata_step4> <timelock_address>`
 6. The facilitator collects signatures from the signers on Gnosis Safe
     - ** (!!) The signers should verify the Tenderly simulation from the Gnosis Safe UI. They should make sure that the domainHash matches what they are seeing in the blind-signing window on their hardware wallet**
-7. The facilitator submits and merges a pull request to `eureka-ops` to update the new canonical ICS26Transfer deployment address. 
+7. The signers should generate the timelock calldata using `cast calldata "execute(address,uint256,bytes,bytes32,bytes32)" <ics20transfer_proxy> 0 <calldata_from_step_3> 0x 0x`
+8. The signers independently verify that the transaction hashes match what is expected on their hardware wallets by running `just get_safe_hashes <safe_address> <nonce> <timelock_calldata_step7> <timelock_address>`
+9. The facilitator submits and merges a pull request to `eureka-ops` to update the new canonical ICS26Transfer deployment address. 
 
 ## Relevant addresses
 
@@ -16,4 +18,5 @@
 * Timelock address (can be confirmed by running `just info-env`) - `0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614`
 * ICS20TransferProxy [`0xa348CfE719B63151F228e3C30EB424BA5a983012`](https://etherscan.io/address/0xa348CfE719B63151F228e3C30EB424BA5a983012)
 * Operational Council Gnosis Safe [`0x4b46ea82D80825CA5640301f47C035942e6D9A46`](https://etherscan.io/address/0x4b46ea82D80825CA5640301f47C035942e6D9A46)
-* Nonce for this specific operation - `4`
+* Nonce for this operation's `schedule` transaction - `4`
+* Nonce for this operation's `execute` transaction - `7`

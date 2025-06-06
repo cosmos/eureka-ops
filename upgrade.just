@@ -27,14 +27,14 @@ _execute-erc1967-upgrade-params safe_address nonce type: info-env
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
   calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation 0x)
 
-  echo "function: chedule"
+  echo "function: execute"
   echo "to: $proxy"
   echo "value: 0"
   echo "data: $calldata"
   echo "predecessor: 0x"
   echo "salt: 0x"
   data=$({{cast_binary}} calldata "execute(address,uint256,bytes calldata,bytes32,bytes32)" $proxy 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
-  {{just}} _get_offline_safe_message_hash {{safe_address}} {{nonce}} $timelockAdmin $data
+  echo "timelock calldata: $data"
 
 _schedule-beacon-upgrade-params sig type:
   #!/bin/bash
