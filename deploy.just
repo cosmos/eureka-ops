@@ -310,10 +310,34 @@ timelock-grant-role timelock_function nonce="":
 timelock-add-light-client timelock_function nonce="": (timelock-script "AddLightClient" timelock_function nonce)
 
 [group('verify')]
-verify-schedule-add-light-client: (timelock-add-light-client "schedule")
+verify-schedule-add-light-client nonce: (timelock-add-light-client "schedule" nonce)
 
 [group('verify')]
 verify-execute-add-light-client nonce: (timelock-add-light-client "execute" nonce)
+
+[group('verify')]
+verify-schedule-grant-role nonce: (timelock-grant-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-grant-role nonce: (timelock-grant-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-upgrade-proxy nonce: (timelock-upgrade-proxy "schedule" nonce)
+
+[group('verify')]
+verify-execute-upgrade-proxy nonce: (timelock-upgrade-proxy "execute" nonce)
+
+[group('verify')]
+verify-schedule-migrate-light-client nonce: (timelock-migrate-light-client "schedule" nonce)
+
+[group('verify')]
+verify-execute-migrate-light-client nonce: (timelock-migrate-light-client "execute" nonce)
 
 timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
     #!/bin/bash
