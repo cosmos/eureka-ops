@@ -282,48 +282,32 @@ ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
 
 # Timelock scripts signed and broadcasted by the timelock controller
 
-_post-timelock: info-timelock
-    #!/bin/bash
+[group('timelock')]
+timelock-grant-rate-limiter-role timelock_function nonce="": (timelock-script "GrantRateLimiterRole" timelock_function nonce)
+
+[group('timelock')]
+timelock-upgrade-proxy timelock_function nonce="": (timelock-script "UpgradeProxy" timelock_function nonce)
+
+[group('timelock')]
+timelock-migrate-light-client timelock_function nonce="": (timelock-script "MigrateLightClient" timelock_function nonce)
+
+[group('timelock')]
+timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "ReplaceTimelockAdmin" timelock_function nonce)
+
+[group('timelock')]
+timelock-grant-role timelock_function nonce="": 
+        #!/bin/bash
     set -euo pipefail
-    echo
-    echo "Dry run of the transaction has been completed."
-    echo "You can now post the transaction to the safe multisig with schedule, and later execute the timelock."
-    echo
-    echo "You can find the basic timelock input above."
-    echo "For the transaction information, use the dry-run output above that to find the necessary information:"
-    echo "to = target"
-    echo "input = data"
-
-[group('timelock')]
-timelock-grant-rate-limiter-role: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantRateLimiterRole.sol -vvvv {{_timelock_flags}}
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
 
 
 [group('timelock')]
-timelock-upgrade-proxy: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/UpgradeProxy.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-migrate-light-client: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/MigrateLightClient.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/ReplaceTimelockAdmin.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
-
-[group('timelock')]
-timelock-add-light-client timelock_function nonce="": (_timelock-script "AddLightClient" timelock_function nonce)
+timelock-add-light-client timelock_function nonce="": (timelock-script "AddLightClient" timelock_function nonce)
 
 [group('verify')]
 verify-schedule-add-light-client: (timelock-add-light-client "schedule")
