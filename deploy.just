@@ -296,7 +296,7 @@ timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "Re
 
 [group('timelock')]
 timelock-grant-role timelock_function nonce="": 
-        #!/bin/bash
+    #!/bin/bash
     set -euo pipefail
     contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
     export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
@@ -315,9 +315,7 @@ verify-schedule-add-light-client: (timelock-add-light-client "schedule")
 [group('verify')]
 verify-execute-add-light-client nonce: (timelock-add-light-client "execute" nonce)
 
-# Private reusable recipes
-
-_timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
+timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
     #!/bin/bash
     set -euo pipefail
     forge script script/{{script_contract_name}}.sol -vvvv {{_timelock_flags}}
