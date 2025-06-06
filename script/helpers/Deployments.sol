@@ -19,7 +19,7 @@ abstract contract Deployments {
         string verifier;
         string[] merklePrefix;
         bytes trustedClientState;
-        bytes trustedConsensusState;
+        bytes32 trustedConsensusStateHash;
         bytes32 updateClientVkey;
         bytes32 membershipVkey;
         bytes32 ucAndMembershipVkey;
@@ -42,7 +42,7 @@ abstract contract Deployments {
             counterpartyClientId: json.readStringOr(string.concat(key, ".counterpartyClientId"), ""),
             implementation: json.readAddressOr(string.concat(key, ".implementation"), address(0)),
             trustedClientState: json.readBytes(string.concat(key, ".trustedClientState")),
-            trustedConsensusState: json.readBytes(string.concat(key, ".trustedConsensusState")),
+            trustedConsensusStateHash: json.readBytes32(string.concat(key, ".trustedConsensusStateHash")),
             updateClientVkey: json.readBytes32(string.concat(key, ".updateClientVkey")),
             membershipVkey: json.readBytes32(string.concat(key, ".membershipVkey")),
             ucAndMembershipVkey: json.readBytes32(string.concat(key, ".ucAndMembershipVkey")),

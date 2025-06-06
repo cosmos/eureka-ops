@@ -56,13 +56,19 @@ info-timelock:
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
     just copy-abi-to-clipboard "TimelockController"
 
-
-_clean-and-build: && _generate-script-helper
+[group('utils')]
+clean: && _build
     #!/bin/bash
     set -eou pipefail
-    echo "Cleaning up..."
-    bun install
+    echo "Doing a full clean..."
     forge clean
+    rm -rf node_modules
+
+_build: && _generate-script-helper
+    #!/bin/bash
+    set -eou pipefail
+    echo "Building contracts..."
+    bun install
     forge build
 
 _confirm-settings script_flags:
@@ -81,7 +87,7 @@ _confirm-settings script_flags:
         exit 1
     fi
 
-_pre-script script_flags: _clean-and-build (_confirm-settings script_flags)
+_pre-script script_flags: _build (_confirm-settings script_flags)
     #!/bin/bash
     set -eou pipefail
     echo "Pre-script checks completed. Proceeding with script execution..."
@@ -93,13 +99,13 @@ _generate-script-helper:
     set -eou pipefail
     forge script script/GenerateScriptHelperJSON.sol:GenerateScriptHelperJSON
 
-test-generate-script-helper: _clean-and-build _generate-script-helper
+test-generate-script-helper: _build _generate-script-helper
     #!/bin/bash
     set -euo pipefail
     jq "." out/scriptHelper.json
 
 [group('deploy')]
-print-abi: _clean-and-build
+print-abi: _build
     #!/bin/bash
     set -eou pipefail
     contract_file_name=$(ls out | fzf)
@@ -128,10 +134,7 @@ copy-abi-to-clipboard contract_name:
 verify-deployment:
     #!/bin/bash
     set -eou pipefail
-    export VERIFY_ONLY=true
-    forge script script/DeployProxiedICS26Router.sol
-    forge script script/DeployProxiedICS20Transfer.sol
-    forge script script/DeploySP1ICS07Tendermint.sol
+    forge script script/VerifyDeployment.sol -vvv
 
 [group('verify')]
 verify-safe-tx safe_address nonce target data:
@@ -206,6 +209,12 @@ deploy-light-client: (_pre-script _broadcast_flags)
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
+deploy-update-light-client-state:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/helpers/UpdateLightClientState.sol
+
+[group('deploy')]
 deploy-relayer-helper: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
@@ -216,12 +225,6 @@ deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/ReplaceTimelockAdmin.sol -vvvv {{_broadcast_flags}}
-
-[group('deploy')]
-deploy-ibcerc20: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/DeployIBCERC20.sol -vvvv {{_broadcast_flags}}
 
 # Operation scripts signed and broadcasted locally
 
@@ -256,7 +259,11 @@ ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-r
 [group('ops')]
 ops-set-custom-erc20: (_pre-script _broadcast_flags) (_set-custom-erc20 _broadcast_flags)
 
-
+[group('ops')]
+ops-add-light-client: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/AddLightClient.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
@@ -311,6 +318,13 @@ timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
 
 [group('timelock')]
 timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
+
+[group('timelock')]
+timelock-add-light-client: (_pre-script _timelock_flags) && _post-timelock
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/AddLightClient.sol -vvvv {{_timelock_flags}}
+
 
 # Private reusable recipes
 
