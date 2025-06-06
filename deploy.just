@@ -3,12 +3,14 @@ _private_key_not_set := "PRIVATE_KEY-NOT-SET"
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
 sender := env_var_or_default("SENDER", "")
+mnemonic_index := env_var_or_default("MNEMONIC_INDEX", "")
 eth_rpc := env_var_or_default("ETH_RPC", "")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
-wallet := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
+_wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
+wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
 _timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
 
-_verify_flags  := "--verify --retries 10 --delay 10"
+_verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
 _timelock_flags := "--sender " + _timelock_controller
 
