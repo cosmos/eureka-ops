@@ -45,13 +45,42 @@ To verify that the Ethereum Light on the hub is running a specific version of th
     ```
 4. Verify that the output from step 2 matches the output from step 3
 
-## Deployment scripts
+## Recipes
 
-TODO: Document deploy group scripts
+### Deploy light client implementation for migration/upgrade
 
-## Ops scripts
+Migrating/upgrading a light client is done in two steps:
+1. Deploying the new light client contract
+2. Migrating the existing light client to use the new contract
 
-TODO: Document ops group script
+#### 1: Deploying a new light client contract
+To deploy a new light client contract that is intended to be migrated, you want to essentially make a "copy" (with any modifications you might want, such as new vkeys) of the existing light client with a new contract.
+
+> Deploying the new light client contract can be done by anyone, but it is important for whoever is running the migration to verify both the contract and constructor parameters of the new light client.
+
+1. Update any fields you want changed in the relevant light client entry in the deployment JSON file.
+2. Update the deployment JSON entry with the latest client and consensus state from the existing light client with:
+    ```bash
+    just deploy-update-light-client-state # You will be prompted for the client ID of the light client you want updated
+    ```
+3. Deploy the light client with:
+    ```bash
+    just deploy-light-client # You will be prompted for the client ID of the light client to deploy
+    ```
+
+The last step will deploy the light client, but not add it to the IBC Client router. It is just a deployed contract with permissions set up for it. 
+The implementation address will be updated in the deployment JSON entry for the light client, making it ready for step 2: migrating the existing light client.
+
+#### 2: Migrate the existing light client
+> ⚠️ Only a wallet with the Light Client Migrator role for the given light client can migrate. Here, we're assuming a timelock admin has those permissions.
+
+1. Generate the timelock schedule transaction for the light client with:
+    ```bash
+    just timelock-migrate-light-client schedule
+    ```
+2. Follow the instructions to create the timelock transactions
+
+After the timelock delay has passed, do the above steps again but replace `schedule` with `execute`
 
 ### Updating IBCERC20 Metadata
 
@@ -67,11 +96,7 @@ To update the Metadata for an IBCERC20 contract, you need to do the following:
     just ops-set-metadata # You will be prompted for the IBCERC20 Address to update and the values to set
     ```
 
-## Timelock scripts
-
-TODO: Document timelock scripts
-
-### Upgrade proxy
+### Upgrade a contract that is behind a proxy
 
 Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (ICS26Router for instance).
 

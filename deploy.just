@@ -54,7 +54,6 @@ info-timelock:
     echo "Predecessor: 0x"
     echo "Salt: 0x"
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
-    just copy-abi-to-clipboard "TimelockController"
 
 [group('utils')]
 clean: && _build
@@ -320,13 +319,77 @@ timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
 timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
 
 [group('timelock')]
-timelock-add-light-client: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/AddLightClient.sol -vvvv {{_timelock_flags}}
+timelock-add-light-client timelock_function nonce="": (_timelock-script "AddLightClient" timelock_function nonce)
 
+[group('verify')]
+verify-schedule-add-light-client: (timelock-add-light-client "schedule")
+
+[group('verify')]
+verify-execute-add-light-client nonce: (timelock-add-light-client "execute" nonce)
 
 # Private reusable recipes
+
+_timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/{{script_contract_name}}.sol -vvvv {{_timelock_flags}}
+
+_timelock-params contract_name timelock_function nonce: 
+    #!/bin/bash
+    set -euo pipefail
+    num_txs=$(jq ".transactions | length" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    # Should be one and only one transaction in the dry-run output
+    if [ "$num_txs" -ne 1 ]; then
+        echo "Expected exactly one transaction in the dry-run output, found $num_txs."
+        exit 1
+    fi
+    tx=$(jq ".transactions[0]" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    function=$(jq -r ".function" <<< "$tx")
+    args=$(jq -r ".arguments" <<< "$tx")
+
+    to=$(jq -r ".transaction.to" <<< "$tx")
+    calldata=$(jq -r ".transaction.input" <<< "$tx")
+    timelock_delay=$(jq -r ".settings.timelock_delay" out/scriptHelper.json)
+
+    schedule_sig="schedule(address,uint256,bytes,bytes32,bytes32,uint256)"
+    execute_sig="execute(address,uint256,bytes,bytes32,bytes32)"
+
+    if [ "{{ timelock_function }}" == "schedule" ]; then
+        timelock_sig=$schedule_sig
+        timelock_calldata=$({{cast_binary}} calldata "$schedule_sig" $to 0 $calldata {{zero_bytes32}} {{zero_bytes32}} $timelock_delay)
+    elif [ "{{ timelock_function }}" == "execute" ]; then
+        timelock_sig=$execute_sig
+        timelock_calldata=$({{cast_binary}} calldata "$execute_sig" $to 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+    else
+        echo "Unknown timelock function: {{ timelock_function }}"
+        exit 1
+    fi
+    echo "Tx info:"
+    echo "{{separator}}"
+    echo "function: $function"
+    echo "args: $args"
+    echo "to: $to"
+    echo "calldata: $calldata"
+    echo 
+    echo "Timelock info:"
+    echo "{{separator}}"
+    echo "function: {{timelock_function}}"
+    echo "to: $to"
+    echo "value: 0"
+    echo "data: $calldata"
+    echo "predecessor: 0x"
+    echo "salt: 0x"
+    echo "delay: $timelock_delay"
+    echo "timelock calldata: $timelock_calldata"
+
+    echo
+    if [ -z "{{ nonce }}" ]; then
+        echo "Nonce not priovided, skipping safe tx hashes"
+    else
+        echo "Safe hashes:"
+        echo "{{separator}}"
+        just get_safe_hashes "{{ nonce }}" $timelock_calldata $to
+    fi
 
 _grant-role script_flags:
     #!/bin/bash
