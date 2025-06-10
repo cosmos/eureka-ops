@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import { Deployments } from "./helpers/Deployments.sol";
+import { Deployments } from "./Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
@@ -10,22 +10,21 @@ import { IICS07TendermintMsgs } from "solidity-ibc-eureka/contracts/light-client
 import { IICS02Client } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
 import { IICS02ClientMsgs } from "solidity-ibc-eureka/contracts/msgs/IICS02ClientMsgs.sol";
 
-contract MigrateSP1ICS07Tendermint is Script, Deployments {
+contract UpdateLightClientState is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory deploymentJson = vm.readFile(path);
 
-        string memory clientIDToMigrate = vm.prompt("Client ID to migrate");
+        string memory clientID = vm.prompt("Client ID to update state for in the JSON file");
 
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, deploymentJson);
         SP1ICS07TendermintDeployment[] memory deployments = loadSP1ICS07TendermintDeployments(vm, deploymentJson, ics26RouterDeployment.proxy);
-        IICS02Client ics26Router = IICS02Client(ics26RouterDeployment.proxy);
 
         uint256 deploymentIndex = UINT256_MAX;
         for (uint256 i = 0; i < deployments.length; i++) {
-            if (Strings.equal(deployments[i].clientId, clientIDToMigrate)) {
+            if (Strings.equal(deployments[i].clientId, clientID)) {
                 deploymentIndex = uint256(i);
                 break;
             }
@@ -33,21 +32,16 @@ contract MigrateSP1ICS07Tendermint is Script, Deployments {
         vm.assertNotEq(deploymentIndex, UINT256_MAX, "Client ID not found");
 
         SP1ICS07TendermintDeployment memory deployment = deployments[deploymentIndex];
-        address newImplementation = deployment.implementation;
-        address actualClientAddress = address(ics26Router.getClient(clientIDToMigrate));
+        SP1ICS07Tendermint ics07Tendermint = SP1ICS07Tendermint(deployment.implementation);
 
-        vm.assertNotEq(actualClientAddress, newImplementation, "On-chain client address already matches the implementation address");
+        bytes memory clientStateBz = ics07Tendermint.getClientState();
+        IICS07TendermintMsgs.ClientState memory clientState = abi.decode(clientStateBz, (IICS07TendermintMsgs.ClientState));
 
-        bytes[] memory merklePrefix = new bytes[](deployment.merklePrefix.length);
-        for (uint256 j = 0; j < deployment.merklePrefix.length; j++) {
-            merklePrefix[j] = bytes(deployment.merklePrefix[j]);
-        }
-        IICS02ClientMsgs.CounterpartyInfo memory counterPartyInfo = IICS02ClientMsgs.CounterpartyInfo(deployment.counterpartyClientId, merklePrefix);
+        bytes32 consensusStateHash = ics07Tendermint.getConsensusStateHash(clientState.latestHeight.revisionHeight);
 
-        vm.startBroadcast();
-
-        ics26Router.migrateClient(clientIDToMigrate, counterPartyInfo, newImplementation);
-
-        vm.stopBroadcast();
+                // Update the deployment JSON
+        vm.writeJson(vm.toString(clientStateBz), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedClientState"));
+        vm.writeJson(vm.toString(consensusStateHash), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedConsensusStateHash"));
     }
 }
+

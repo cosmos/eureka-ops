@@ -3,12 +3,14 @@ _private_key_not_set := "PRIVATE_KEY-NOT-SET"
 environment := env_var_or_default("EUREKA_ENVIRONMENT", "")
 chain := env_var_or_default("EUREKA_CHAIN", "")
 sender := env_var_or_default("SENDER", "")
+mnemonic_index := env_var_or_default("MNEMONIC_INDEX", "")
 eth_rpc := env_var_or_default("ETH_RPC", "")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
-wallet := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
+_wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
+wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
 _timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
 
-_verify_flags  := "--verify --retries 10 --delay 10"
+_verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
 _timelock_flags := "--sender " + _timelock_controller
 
@@ -54,15 +56,20 @@ info-timelock:
     echo "Predecessor: 0x"
     echo "Salt: 0x"
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
-    just copy-abi-to-clipboard "TimelockController"
 
-
-_clean-and-build: && _generate-script-helper
+[group('utils')]
+clean: && _build
     #!/bin/bash
     set -eou pipefail
-    echo "Cleaning up..."
-    bun install
+    echo "Doing a full clean..."
     forge clean
+    rm -rf node_modules
+
+_build: && _generate-script-helper
+    #!/bin/bash
+    set -eou pipefail
+    echo "Building contracts..."
+    bun install
     forge build
 
 _confirm-settings script_flags:
@@ -71,7 +78,8 @@ _confirm-settings script_flags:
     echo "You are about to run a script with the following settings:"
     just info-env
     echo
-    echo "Script flags to be used: {{script_flags}}"
+    safe_script_flags=$(echo "{{script_flags}}" | sed -e "s/{{private_key}}/***REDACTED***/g")
+    echo "Script flags to be used: $safe_script_flags"
     echo
     read -p "Please confirm: (y/n) " -n 1 -r
     echo    # (optional) move to a new line
@@ -81,11 +89,12 @@ _confirm-settings script_flags:
         exit 1
     fi
 
-_pre-script script_flags: _clean-and-build (_confirm-settings script_flags)
+_pre-script script_flags: _build (_confirm-settings script_flags)
     #!/bin/bash
     set -eou pipefail
+    echo
     echo "Pre-script checks completed. Proceeding with script execution..."
-    echo "Script flags: {{script_flags}}"
+    echo {{separator}}
 
 # Generate user input JSON file that can be used for fzf selection
 _generate-script-helper:
@@ -93,13 +102,13 @@ _generate-script-helper:
     set -eou pipefail
     forge script script/GenerateScriptHelperJSON.sol:GenerateScriptHelperJSON
 
-test-generate-script-helper: _clean-and-build _generate-script-helper
+test-generate-script-helper: _build _generate-script-helper
     #!/bin/bash
     set -euo pipefail
     jq "." out/scriptHelper.json
 
 [group('deploy')]
-print-abi: _clean-and-build
+print-abi: _build
     #!/bin/bash
     set -eou pipefail
     contract_file_name=$(ls out | fzf)
@@ -128,10 +137,7 @@ copy-abi-to-clipboard contract_name:
 verify-deployment:
     #!/bin/bash
     set -eou pipefail
-    export VERIFY_ONLY=true
-    forge script script/DeployProxiedICS26Router.sol
-    forge script script/DeployProxiedICS20Transfer.sol
-    forge script script/DeploySP1ICS07Tendermint.sol
+    forge script script/VerifyDeployment.sol -vvv
 
 [group('verify')]
 verify-safe-tx safe_address nonce target data:
@@ -206,6 +212,12 @@ deploy-light-client: (_pre-script _broadcast_flags)
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
+deploy-update-light-client-state:
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/helpers/UpdateLightClientState.sol
+
+[group('deploy')]
 deploy-relayer-helper: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
@@ -216,12 +228,6 @@ deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/ReplaceTimelockAdmin.sol -vvvv {{_broadcast_flags}}
-
-[group('deploy')]
-deploy-ibcerc20: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/DeployIBCERC20.sol -vvvv {{_broadcast_flags}}
 
 # Operation scripts signed and broadcasted locally
 
@@ -256,7 +262,11 @@ ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-r
 [group('ops')]
 ops-set-custom-erc20: (_pre-script _broadcast_flags) (_set-custom-erc20 _broadcast_flags)
 
-
+[group('ops')]
+ops-add-light-client: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/AddLightClient.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
@@ -272,47 +282,124 @@ ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
 
 # Timelock scripts signed and broadcasted by the timelock controller
 
-_post-timelock: info-timelock
+[group('timelock')]
+timelock-grant-rate-limiter-role timelock_function nonce="": (timelock-script "GrantRateLimiterRole" timelock_function nonce)
+
+[group('timelock')]
+timelock-upgrade-proxy timelock_function nonce="": (timelock-script "UpgradeProxy" timelock_function nonce)
+
+[group('timelock')]
+timelock-migrate-light-client timelock_function nonce="": (timelock-script "MigrateLightClient" timelock_function nonce)
+
+[group('timelock')]
+timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "ReplaceTimelockAdmin" timelock_function nonce)
+
+[group('timelock')]
+timelock-grant-role timelock_function nonce="": 
     #!/bin/bash
     set -euo pipefail
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
+
+
+[group('timelock')]
+timelock-add-light-client timelock_function nonce="": (timelock-script "AddLightClient" timelock_function nonce)
+
+[group('verify')]
+verify-schedule-add-light-client nonce: (timelock-add-light-client "schedule" nonce)
+
+[group('verify')]
+verify-execute-add-light-client nonce: (timelock-add-light-client "execute" nonce)
+
+[group('verify')]
+verify-schedule-grant-role nonce: (timelock-grant-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-grant-role nonce: (timelock-grant-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-upgrade-proxy nonce: (timelock-upgrade-proxy "schedule" nonce)
+
+[group('verify')]
+verify-execute-upgrade-proxy nonce: (timelock-upgrade-proxy "execute" nonce)
+
+[group('verify')]
+verify-schedule-migrate-light-client nonce: (timelock-migrate-light-client "schedule" nonce)
+
+[group('verify')]
+verify-execute-migrate-light-client nonce: (timelock-migrate-light-client "execute" nonce)
+
+timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/{{script_contract_name}}.sol -vvvv {{_timelock_flags}}
+
+_timelock-params contract_name timelock_function nonce: 
+    #!/bin/bash
+    set -euo pipefail
+    num_txs=$(jq ".transactions | length" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    # Should be one and only one transaction in the dry-run output
+    if [ "$num_txs" -ne 1 ]; then
+        echo "Expected exactly one transaction in the dry-run output, found $num_txs."
+        exit 1
+    fi
+    tx=$(jq ".transactions[0]" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    function=$(jq -r ".function" <<< "$tx")
+    args=$(jq -r ".arguments" <<< "$tx")
+
+    to=$(jq -r ".transaction.to" <<< "$tx")
+    calldata=$(jq -r ".transaction.input" <<< "$tx")
+    timelock_delay=$(jq -r ".settings.timelock_delay" out/scriptHelper.json)
+
+    schedule_sig="schedule(address,uint256,bytes,bytes32,bytes32,uint256)"
+    execute_sig="execute(address,uint256,bytes,bytes32,bytes32)"
+
+    if [ "{{ timelock_function }}" == "schedule" ]; then
+        timelock_sig=$schedule_sig
+        timelock_calldata=$({{cast_binary}} calldata "$schedule_sig" $to 0 $calldata {{zero_bytes32}} {{zero_bytes32}} $timelock_delay)
+    elif [ "{{ timelock_function }}" == "execute" ]; then
+        timelock_sig=$execute_sig
+        timelock_calldata=$({{cast_binary}} calldata "$execute_sig" $to 0 $calldata {{zero_bytes32}} {{zero_bytes32}})
+    else
+        echo "Unknown timelock function: {{ timelock_function }}"
+        exit 1
+    fi
+    echo "Tx info:"
+    echo "{{separator}}"
+    echo "function: $function"
+    echo "args: $args"
+    echo "to: $to"
+    echo "calldata: $calldata"
+    echo 
+    echo "Timelock info:"
+    echo "{{separator}}"
+    echo "function: {{timelock_function}}"
+    echo "to: $to"
+    echo "value: 0"
+    echo "data: $calldata"
+    echo "predecessor: 0x"
+    echo "salt: 0x"
+    echo "delay: $timelock_delay"
+    echo "timelock calldata: $timelock_calldata"
+
     echo
-    echo "Dry run of the transaction has been completed."
-    echo "You can now post the transaction to the safe multisig with schedule, and later execute the timelock."
-    echo
-    echo "You can find the basic timelock input above."
-    echo "For the transaction information, use the dry-run output above that to find the necessary information:"
-    echo "to = target"
-    echo "input = data"
-
-[group('timelock')]
-timelock-grant-rate-limiter-role: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantRateLimiterRole.sol -vvvv {{_timelock_flags}}
-
-
-[group('timelock')]
-timelock-upgrade-proxy: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/UpgradeProxy.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-migrate-light-client: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/MigrateLightClient.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-replace-timelock-admin: (_pre-script _timelock_flags) && _post-timelock
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/ReplaceTimelockAdmin.sol -vvvv {{_timelock_flags}}
-
-[group('timelock')]
-timelock-grant-role: _generate-script-helper (_pre-script _timelock_flags) (_grant-role _timelock_flags) && _post-timelock
-
-# Private reusable recipes
+    if [ -z "{{ nonce }}" ]; then
+        echo "Nonce not priovided, skipping safe tx hashes"
+    else
+        echo "Safe hashes:"
+        echo "{{separator}}"
+        just get_safe_hashes {{ nonce }} $timelock_calldata {{ _timelock_controller }}
+    fi
 
 _grant-role script_flags:
     #!/bin/bash
