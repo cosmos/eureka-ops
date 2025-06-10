@@ -140,6 +140,21 @@ verify-deployment:
     forge script script/VerifyDeployment.sol -vvv
 
 [group('verify')]
+[doc('Verifies a contract deployed in <environment> on <chain>')]
+verify-contract:
+    #!/bin/bash
+    set -eou pipefail
+    solidity_ver=$(jq -r ".dependencies[\"@cosmos/solidity-ibc-eureka\"]" package.json)
+    echo "You are about to verify a contract from the IBC Solidity Contracts with the tag/ref: $solidity_ver"
+    read -p "Enter contract address to verify: " -r
+    echo    # (optional) move to a new line
+    contract_address=$REPLY
+    contract_path=$(cd node_modules/@cosmos/solidity-ibc-eureka/contracts && find . -type f | sed 's|^\./||' | fzf --header="Select contract you expect to be deployed at the address above")
+    contract_file_name=$(basename "$contract_path")
+    contract_name=${contract_file_name%".sol"}
+    forge verify-contract $contract_address node_modules/@cosmos/solidity-ibc-eureka/contracts/$contract_path:$contract_name
+
+[group('verify')]
 verify-safe-tx safe_address nonce target data:
     #!/bin/bash
     set -eou pipefail
