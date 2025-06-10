@@ -398,7 +398,7 @@ _timelock-params contract_name timelock_function nonce:
     else
         echo "Safe hashes:"
         echo "{{separator}}"
-        just get_safe_hashes "{{ nonce }}" $timelock_calldata $to
+        just get_safe_hashes {{ nonce }} $timelock_calldata {{ _timelock_controller }}
     fi
 
 _grant-role script_flags:

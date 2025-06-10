@@ -1,4 +1,4 @@
-safe_address := "0x85CF98533e3275450a0d61D9BC236225947C5882"
+safe_address := "0x7B96CD54aA750EF83ca90eA487e0bA321707559a"
 eip712_separator_typehash := "0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218"
 safe_tx_typehash := "0xbb8310d486368db6bd6f849402fdd73ad53d316b5a4b2644ad6efe0f941286d8"
 zero_address := "0x0000000000000000000000000000000000000000"
@@ -67,6 +67,6 @@ get_safe_hashes nonce data to:
   domain_hash=$({{just}} _get_safe_domain_hash {{nonce}})
   message_hash=$({{just}} _get_safe_message_hash {{nonce}} {{data}} {{to}})
   tx_hash=$({{just}} _get_safe_tx_hash {{nonce}} $domain_hash $message_hash)
-  echo "Message hash: $message_hash"
   echo "Domain hash: $domain_hash"
+  echo "Message hash: $message_hash"
   echo "safeTxHash: $tx_hash"
