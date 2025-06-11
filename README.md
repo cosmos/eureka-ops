@@ -45,6 +45,25 @@ To verify that the Ethereum Light on the hub is running a specific version of th
     ```
 4. Verify that the output from step 2 matches the output from step 3
 
+### Verify contract code on Ethereum
+
+There are two ways you can verify the source code of a given contract.
+
+#### 1: With the `verify-contract` recipe
+We provide a convenience script that verifies that the contract locked in the `package.json` (listed in the dependencies as `@cosmos/solidity-ibc-eureka`) are the same as deployed on-chain.
+
+This method requires 
+
+1. Run `just verify-contract` and respond to the prompts outlined in the next steps
+    a. The version (tag/ref) should match the expected version of the contracts you want to verify against
+2. Enter the contract address you want to verify
+3. Select the contract that you want to verify against
+
+If successful, you will see something like:
+```
+Contract [node_modules/@cosmos/solidity-ibc-eureka/contracts/light-clients/SP1ICS07Tendermint.sol:SP1ICS07Tendermint] "0x216Da2c06A8c029F3d77741C3d015b22e35F62DF" is already verified. Skipping verification.
+```
+
 ## Recipes
 
 ### Deploy light client implementation for migration/upgrade
