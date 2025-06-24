@@ -269,6 +269,12 @@ ops-add-light-client: (_pre-script _broadcast_flags)
     forge script script/AddLightClient.sol -vvvv {{_broadcast_flags}}
 
 [group('ops')]
+ops-migrate-light-client: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/MigrateLightClient.sol -vvvv {{_broadcast_flags}}
+
+[group('ops')]
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
