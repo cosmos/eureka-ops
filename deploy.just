@@ -13,6 +13,7 @@ _timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1
 _verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
 _timelock_flags := "--sender " + _timelock_controller
+_multisig_flags := "--sender " + sender
 
 export FOUNDRY_ETH_RPC_URL := eth_rpc
 export DEPLOYMENT_ENV := environment
@@ -231,48 +232,32 @@ deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
 
 # Operation scripts signed and broadcasted locally
 
-# TODO: Extract all of these into private recipes, and create both ops and timelock versions
 [group('ops')]
-ops-grant-rate-limiter-role: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantRateLimiterRole.sol -vvvv {{_broadcast_flags}}
+ops-grant-rate-limiter-role: (ops-script "GrantRateLimiterRole" _broadcast_flags)
 
 [group('ops')]
-ops-grant-metadata-role: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/GrantMetadataRole.sol -vvvv {{_broadcast_flags}}
+ops-grant-metadata-role: (ops-script "GrantMetadataRole" _broadcast_flags)
 
 [group('ops')]
-ops-revoke-metadata-role: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/RevokeMetadataRole.sol -vvvv {{_broadcast_flags}}
+ops-revoke-metadata-role: (ops-script "RevokeMetadataRole" _broadcast_flags)
 
 [group('ops')]
-ops-set-metadata: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/SetTokenMetadata.sol -vvvv {{_broadcast_flags}}
+ops-set-metadata: (ops-script "SetTokenMetadata" _broadcast_flags)
 
 [group('ops')]
 ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
 
 [group('ops')]
-ops-set-custom-erc20: (_pre-script _broadcast_flags) (_set-custom-erc20 _broadcast_flags)
+ops-set-custom-erc20: (ops-script "SetCustomERC20" _broadcast_flags)
 
 [group('ops')]
-ops-add-light-client: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/AddLightClient.sol -vvvv {{_broadcast_flags}}
+ops-set-custom-erc20-multisig: (ops-script-multisig "SetCustomERC20")
 
 [group('ops')]
-ops-migrate-light-client: (_pre-script _broadcast_flags)
-    #!/bin/bash
-    set -euo pipefail
-    forge script script/MigrateLightClient.sol -vvvv {{_broadcast_flags}}
+ops-add-light-client: (ops-script "AddLightClient" _broadcast_flags)
+
+[group('ops')]
+ops-migrate-light-client: (ops-script "MigrateLightClient" _broadcast_flags)
 
 [group('ops')]
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
@@ -344,6 +329,37 @@ verify-schedule-migrate-light-client nonce: (timelock-migrate-light-client "sche
 
 [group('verify')]
 verify-execute-migrate-light-client nonce: (timelock-migrate-light-client "execute" nonce)
+
+[group('ops')]
+ops-script script_contract_name script_flags: (_pre-script script_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/{{script_contract_name}}.sol -vvvv {{script_flags}}
+
+[group('ops')]
+ops-script-multisig script_contract_name: (ops-script script_contract_name _multisig_flags) && (_multisig-params script_contract_name)
+
+_multisig-params contract_name:
+    #!/bin/bash
+    set -euo pipefail
+    num_txs=$(jq ".transactions | length" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    # Should be one and only one transaction in the dry-run output
+    if [ "$num_txs" -ne 1 ]; then
+        echo "Expected exactly one transaction in the dry-run output, found $num_txs."
+        exit 1
+    fi
+    tx=$(jq ".transactions[0]" broadcast/{{ contract_name }}.sol/{{ chain }}/dry-run/run-latest.json)
+    function=$(jq -r ".function" <<< "$tx")
+    args=$(jq -r ".arguments" <<< "$tx")
+
+    to=$(jq -r ".transaction.to" <<< "$tx")
+    calldata=$(jq -r ".transaction.input" <<< "$tx")
+    echo "Tx info:"
+    echo "{{separator}}"
+    echo "function: $function"
+    echo "args: $args"
+    echo "to: $to"
+    echo "calldata: $calldata"
 
 timelock-script script_contract_name timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params script_contract_name timelock_function nonce)
     #!/bin/bash
