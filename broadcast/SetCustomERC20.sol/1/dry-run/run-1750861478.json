@@ -1,0 +1,33 @@
+{
+  "transactions": [
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": null,
+      "contractAddress": "0xa348cfe719b63151f228e3c30eb424ba5a983012",
+      "function": "setCustomERC20(string,address)",
+      "arguments": [
+        "transfer/cosmoshub-0/uderpsy",
+        "0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614"
+      ],
+      "transaction": {
+        "from": "0x4b46ea82d80825ca5640301f47c035942e6d9a46",
+        "to": "0xa348cfe719b63151f228e3c30eb424ba5a983012",
+        "gas": "0x1b12d",
+        "value": "0x0",
+        "input": "0xa1d28f570000000000000000000000000000000000000000000000000000000000000040000000000000000000000000b3999b2d30dd8c9faece5a8a503fae42b8b1b614000000000000000000000000000000000000000000000000000000000000001c7472616e736665722f636f736d6f736875622d302f7564657270737900000000",
+        "nonce": "0x1",
+        "chainId": "0x1"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1750861478,
+  "chain": 1,
+  "commit": "4778152"
+}
