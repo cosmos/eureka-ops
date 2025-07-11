@@ -286,7 +286,7 @@ timelock-migrate-light-client timelock_function nonce="": (timelock-script "Migr
 timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "ReplaceTimelockAdmin" timelock_function nonce)
 
 [group('timelock')]
-timelock-grant-role timelock_function nonce="": 
+timelock-grant-role timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params "GrantRole" timelock_function nonce)
     #!/bin/bash
     set -euo pipefail
     contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")

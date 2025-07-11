@@ -1,0 +1,33 @@
+{
+  "transactions": [
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": null,
+      "contractAddress": "0x3af134307d5ee90faa2ba9cdba14ba66414cf1a7",
+      "function": "upgradeToAndCall(address,bytes)",
+      "arguments": [
+        "0x4e9083eC6ed91d6ab6b59EaEcfCd4459F76dCdE1",
+        "0x"
+      ],
+      "transaction": {
+        "from": "0xb3999b2d30dd8c9faece5a8a503fae42b8b1b614",
+        "to": "0x3af134307d5ee90faa2ba9cdba14ba66414cf1a7",
+        "gas": "0xca8b",
+        "value": "0x0",
+        "input": "0x4f1ef2860000000000000000000000004e9083ec6ed91d6ab6b59eaecfcd4459f76dcde100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+        "nonce": "0x1",
+        "chainId": "0x1"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1748437519,
+  "chain": 1,
+  "commit": "ccb7756"
+}
