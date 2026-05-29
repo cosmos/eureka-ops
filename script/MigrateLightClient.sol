@@ -5,8 +5,8 @@ import { Deployments } from "./helpers/Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/SP1ICS07Tendermint.sol";
-import { IICS07TendermintMsgs } from "solidity-ibc-eureka/contracts/light-clients/msgs/IICS07TendermintMsgs.sol";
+import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/SP1ICS07Tendermint.sol";
+import { IICS07TendermintMsgs } from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/msgs/IICS07TendermintMsgs.sol";
 import { IICS02Client } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
 import { IICS02ClientMsgs } from "solidity-ibc-eureka/contracts/msgs/IICS02ClientMsgs.sol";
 

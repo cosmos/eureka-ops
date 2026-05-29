@@ -6,6 +6,7 @@ soljson-latest.js
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
+/broadcast/ShadowFork*.sol/
 
 # Docs
 docs/
@@ -15,3 +16,5 @@ docs/
 .env
 node_modules/
 .idea/
+.terminalgraph/
+deployments/shadow-*/

@@ -47,6 +47,35 @@ To verify that the Ethereum Light on the hub is running a specific version of th
 
 ## Recipes
 
+### Shadow fork v2-to-v3 rehearsal
+
+To test the v2-to-v3 upgrade flow against uncommitted local changes, start an Anvil fork in one terminal:
+
+```bash
+export SEPOLIA_RPC=<SEPOLIA_RPC_URL>
+just shadow-start-sepolia
+```
+
+Then run the rehearsal in another terminal:
+
+```bash
+just shadow-v2-to-v3-sepolia
+```
+
+Use `MAINNET_RPC` with `just shadow-start-mainnet` and `just shadow-v2-to-v3-mainnet` for Ethereum mainnet. For other environments, use `just shadow-v2-to-v3 <chain_id> <source_env> <shadow_env> <port>`. The rehearsal writes only to ignored `deployments/shadow-*` copies.
+
+### Fresh v3 core deployment
+
+For a new v3 deployment where `accessManager`, `ics26Router`, and `ics20Transfer` addresses are still zero in the deployment JSON, deploy the core contracts with:
+
+```bash
+just deploy-v3-core
+```
+
+This deploys the `AccessManager`, `ICS26Router`, `ICS20Transfer`, `Escrow`, and `IBCERC20` implementations, registers the transfer app on the router, configures the v3 target function roles, grants the configured relayer/pauser/unpauser/delegate-sender/customizer roles, and writes the deployed addresses back to `deployments/<environment>/<chain_id>.json`.
+
+The script temporarily uses the broadcast account as the `AccessManager` admin during deployment, then hands admin control to the configured `.ics26Router.timelockAdmin`. The configured admin can be an EOA, Safe, or timelock.
+
 ### Deploy light client implementation for migration/upgrade
 
 Migrating/upgrading a light client is done in two steps:

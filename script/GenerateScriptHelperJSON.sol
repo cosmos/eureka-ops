@@ -6,9 +6,7 @@ import "forge-std/console.sol";
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
-import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
-import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol"; 
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { TimelockController } from "@openzeppelin-contracts/governance/TimelockController.sol";
 
@@ -40,11 +38,8 @@ contract GenerateScriptHelperJSON is Script, Deployments {
 
 
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
-        SP1ICS07TendermintDeployment[] memory lightClientDeployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
-
-        ICS26Router ics26Router = ICS26Router(ics26RouterDeployment.proxy);
-        ICS20Transfer ics20Transfer = ICS20Transfer(ics20TransferDeployment.proxy);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
 
         // These keys are not used in the JSON output itself, but are used to keep track of the internal structure created by the `serialize*` functions.
         string memory deploymentsKey = "deploymentsKey";
@@ -53,6 +48,8 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         string memory ics26RolesKey = "ics26RolesKey";
         string memory ics20Key = "ics20Key";
         string memory ics20RolesKey = "ics20RolesKey";
+        string memory accessManagerKey = "accessManagerKey";
+        string memory accessManagerRolesKey = "accessManagerRolesKey";
 
         // Settings
         bool isTimelockController = false;
@@ -81,32 +78,28 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeBool(ics26Key, "uups_upgradeable", true);
 
         string memory ics26Roles;
-        vm.serializeBytes32(ics26RolesKey, "Client ID Customizer role", ics26Router.CLIENT_ID_CUSTOMIZER_ROLE());
-        vm.serializeBytes32(ics26RolesKey, "Port Customizer role", ics26Router.PORT_CUSTOMIZER_ROLE());
-        vm.serializeBytes32(ics26RolesKey, "Relayer role", ics26Router.RELAYER_ROLE());
-
-        for (uint256 i = 0; i < lightClientDeployments.length; i++) {
-            bytes32 role = ics26Router.getLightClientMigratorRole(lightClientDeployments[i].clientId);
-            ics26Roles = vm.serializeBytes32(ics26RolesKey, string.concat("Light Client Migrator role: ", lightClientDeployments[i].clientId), role);
-        }
+        vm.serializeUint(ics26RolesKey, "ID Customizer role", IBCRolesLib.ID_CUSTOMIZER_ROLE);
+        ics26Roles = vm.serializeUint(ics26RolesKey, "Relayer role", IBCRolesLib.RELAYER_ROLE);
         string memory ics26Json = vm.serializeString(ics26Key, "roles", ics26Roles);
 
         // ICS20
         vm.serializeAddress(ics20Key, "contract_address", ics20TransferDeployment.proxy);
         vm.serializeBool(ics20Key, "uups_upgradeable", true);
 
-        vm.serializeBytes32(ics20RolesKey, "Pauser role", ics20Transfer.PAUSER_ROLE());
-        vm.serializeBytes32(ics20RolesKey, "Unpauser role", ics20Transfer.UNPAUSER_ROLE());
-        vm.serializeBytes32(ics20RolesKey, "Token Operator role", ics20Transfer.TOKEN_OPERATOR_ROLE());
-        ICS20Transfer newIcs20Transfer = new ICS20Transfer();
-        vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", newIcs20Transfer.ERC20_CUSTOMIZER_ROLE());
-        
-        string memory ics20Roles = vm.serializeBytes32(ics20RolesKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
+        vm.serializeUint(ics20RolesKey, "Pauser role", IBCRolesLib.PAUSER_ROLE);
+        vm.serializeUint(ics20RolesKey, "Unpauser role", IBCRolesLib.UNPAUSER_ROLE);
+        vm.serializeUint(ics20RolesKey, "ERC20 Customizer role", IBCRolesLib.ERC20_CUSTOMIZER_ROLE);
+        string memory ics20Roles = vm.serializeUint(ics20RolesKey, "Delegate Sender role", IBCRolesLib.DELEGATE_SENDER_ROLE);
         string memory ics20Json = vm.serializeString(ics20Key, "roles", ics20Roles);
+
+        vm.serializeAddress(accessManagerKey, "contract_address", accessManagerDeployment.accessManager);
+        string memory accessManagerRoles = vm.serializeUint(accessManagerRolesKey, "Admin role", IBCRolesLib.ADMIN_ROLE);
+        string memory accessManagerJson = vm.serializeString(accessManagerKey, "roles", accessManagerRoles);
 
         // Collect deployments
         vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS26_ROUTER_NAME, ics26Json);
-        string memory deployments = vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS20_TRANSFER_NAME, ics20Json);
+        vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS20_TRANSFER_NAME, ics20Json);
+        string memory deployments = vm.serializeString(deploymentsKey, "AccessManager", accessManagerJson);
 
         vm.serializeString("root", "settings", settings);
         vm.serializeString("root", "implementations", implementations);

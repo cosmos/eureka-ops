@@ -33,8 +33,12 @@
     "proxy": "0x3a4e076D1c5EBfC813993c497Bb284598121b515",
     "unpausers": [
       "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+    ],
+    "delegateSenders": [
+      "0x46914a36365EC16600D81880903f3e95dcea3e5D"
     ]
   },
+  "accessManager": "0x0000000000000000000000000000000000000000",
   "light_clients": {
     "0": {
       "clientId": "hub-testnet-0",

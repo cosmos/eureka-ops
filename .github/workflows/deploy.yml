@@ -22,8 +22,7 @@ jobs:
           anvil &
       - name: Deploy contracts
         run: |
-          forge script script/DeployProxiedICS26Router.sol -vvv --broadcast --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-          forge script script/DeployProxiedICS20Transfer.sol -vvv --broadcast --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+          forge script script/DeployV3Core.sol:DeployV3Core -vvv --broadcast --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
           forge script script/DeploySP1ICS07Tendermint.sol -vvv --broadcast --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
           forge script script/PauseTransfers.sol -vvv --broadcast --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
           forge script script/UnpauseTransfers.sol -vvv --broadcast --private-key 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
@@ -54,11 +53,22 @@ jobs:
         uses: actions/checkout@v4
       - name: "Set up environment"
         uses: ./.github/setup
-      - name: Export the RPC URL
+      - name: Prepare verification
         run: |
-          cat deployments/${{ matrix.env }}/${{ matrix.file }} | jq -r ". | \"FOUNDRY_ETH_RPC_URL=\(.rpc_url)\"" >> $GITHUB_ENV
+          set -euo pipefail
+
+          deployment="deployments/${{ matrix.env }}/${{ matrix.file }}"
+          if ! access_manager=$(jq -er '.accessManager | strings' "$deployment"); then
+            echo "::error file=$deployment::accessManager must be present before deployment verification."
+            exit 1
+          fi
+
+          if [ "$access_manager" = "0x0000000000000000000000000000000000000000" ]; then
+            echo "::error file=$deployment::accessManager must not be the zero address."
+            exit 1
+          fi
+
+          jq -er '.rpc_url | strings | "FOUNDRY_ETH_RPC_URL=\(.)"' "$deployment" >> "$GITHUB_ENV"
       - name: Verify deployed contracts
         run: |
-          forge script script/DeployProxiedICS26Router.sol -vvv
-          forge script script/DeployProxiedICS20Transfer.sol -vvv
-          forge script script/DeploySP1ICS07Tendermint.sol -vvv
+          forge script script/VerifyDeployment.sol:VerifyDeployment -vvv

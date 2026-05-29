@@ -5,9 +5,9 @@ import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
-import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol"; 
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
 contract GrantPortCustomizerRole is Script, Deployments {
@@ -19,12 +19,12 @@ contract GrantPortCustomizerRole is Script, Deployments {
 
         address portCustomizerRole = vm.promptAddress("Port customizer address");
 
-        ProxiedICS26RouterDeployment memory deployment = loadProxiedICS26RouterDeployment(vm, json);
-        ICS26Router ics26Router = ICS26Router(deployment.proxy);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
+        vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
 
         vm.startBroadcast();
 
-        ics26Router.grantRole(ics26Router.PORT_CUSTOMIZER_ROLE(), portCustomizerRole);
+        IAccessManager(accessManagerDeployment.accessManager).grantRole(IBCRolesLib.ID_CUSTOMIZER_ROLE, portCustomizerRole, 0);
 
         vm.stopBroadcast();
     }

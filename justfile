@@ -2,6 +2,7 @@ import 'consts.just'
 import 'safe.just'
 import 'deploy.just'
 import 'upgrade.just'
+import 'shadow.just'
 
 set dotenv-load
 set dotenv-filename := ".eureka-env"

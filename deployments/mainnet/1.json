@@ -29,8 +29,13 @@
     "tokenOperator": "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
     "unpausers": [
       "0x7B96CD54aA750EF83ca90eA487e0bA321707559a"
+    ],
+    "delegateSenders": [
+      "0xfc2d0487A0ae42aE7329a80dc269916a9184CF7c",
+      "0x47a4b9F949E98a49Be500753c19a8f9c9d6b7689"
     ]
   },
+  "accessManager": "0x0000000000000000000000000000000000000000",
   "light_clients": {
     "0": {
       "clientId": "cosmoshub-0",

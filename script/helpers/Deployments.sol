@@ -9,6 +9,14 @@ abstract contract Deployments {
 
     string internal constant DEPLOYMENT_DIR = "/deployments/";
 
+    struct AccessManagerDeployment {
+        address accessManager;
+    }
+
+    function loadAccessManagerDeployment(string memory json) public view returns (AccessManagerDeployment memory) {
+        return AccessManagerDeployment({ accessManager: json.readAddressOr(".accessManager", address(0)) });
+    }
+
     struct SP1ICS07TendermintDeployment {
         // The verifier address can be set in the environment variables.
         // If not set, then the verifier is set based on the zkAlgorithm.
@@ -113,6 +121,7 @@ abstract contract Deployments {
         // admin control
         address[] pausers;
         address[] unpausers;
+        address[] delegateSenders;
         address tokenOperator;
         address permit2;
         address proxy;
@@ -124,9 +133,11 @@ abstract contract Deployments {
         string memory json
     )
     public
-    pure
+    view
     returns (ProxiedICS20TransferDeployment memory)
     {
+        address[] memory defaultDelegateSenders = new address[](0);
+
         // abi.decode(vm.parseJson(json, ".ics20Transfer"), (ProxiedICS20TransferDeployment));
         ProxiedICS20TransferDeployment memory fixture = ProxiedICS20TransferDeployment({
             escrowImplementation: vm.parseJsonAddress(json, ".ics20Transfer.escrowImplementation"),
@@ -135,6 +146,7 @@ abstract contract Deployments {
             implementation: vm.parseJsonAddress(json, ".ics20Transfer.implementation"),
             pausers: vm.parseJsonAddressArray(json, ".ics20Transfer.pausers"),
             unpausers: vm.parseJsonAddressArray(json, ".ics20Transfer.unpausers"),
+            delegateSenders: json.readAddressArrayOr(".ics20Transfer.delegateSenders", defaultDelegateSenders),
             tokenOperator: vm.parseJsonAddress(json, ".ics20Transfer.tokenOperator"),
             permit2: vm.parseJsonAddress(json, ".ics20Transfer.permit2"),
             proxy: vm.parseJsonAddress(json, ".ics20Transfer.proxy")

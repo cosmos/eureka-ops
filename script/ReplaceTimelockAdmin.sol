@@ -5,8 +5,13 @@ import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
+
+interface IAccessManagerMulticall {
+    function multicall(bytes[] calldata data) external returns (bytes[] memory results);
+}
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
 contract ReplaceTimelockAdmin is Script, Deployments {
@@ -19,11 +24,18 @@ contract ReplaceTimelockAdmin is Script, Deployments {
         address newTimelockAdmin = vm.promptAddress("New timelock admin");
 
         ProxiedICS26RouterDeployment memory deployment = loadProxiedICS26RouterDeployment(vm, json);
-        ICS26Router ics26Router = ICS26Router(deployment.proxy);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
+        vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
+        vm.assertNotEq(newTimelockAdmin, address(0), "New timelock admin must not be zero");
+        vm.assertNotEq(newTimelockAdmin, deployment.timelockAdmin, "New timelock admin must be different");
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(IAccessManager.grantRole, (IBCRolesLib.ADMIN_ROLE, newTimelockAdmin, 0));
+        calls[1] = abi.encodeCall(IAccessManager.revokeRole, (IBCRolesLib.ADMIN_ROLE, deployment.timelockAdmin));
 
         vm.startBroadcast();
 
-        ics26Router.setTimelockedAdmin(newTimelockAdmin);
+        IAccessManagerMulticall(accessManagerDeployment.accessManager).multicall(calls);
 
         vm.stopBroadcast();
 

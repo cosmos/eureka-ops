@@ -5,9 +5,14 @@ import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
-import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol"; 
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
+
+interface IAccessManagerMulticall {
+    function multicall(bytes[] calldata data) external returns (bytes[] memory results);
+}
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
 contract GrantRateLimiterRole is Script, Deployments {
@@ -21,13 +26,23 @@ contract GrantRateLimiterRole is Script, Deployments {
         address rateLimiterAddress = vm.promptAddress("Rate limiter address");
 
         ProxiedICS20TransferDeployment memory deployment = loadProxiedICS20TransferDeployment(vm, json);
-        ICS20Transfer ics20Transfer = ICS20Transfer(deployment.proxy);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
+        vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
 
-        Escrow escrow = Escrow(ics20Transfer.getEscrow(clientId));
+        ICS20Transfer ics20Transfer = ICS20Transfer(deployment.proxy);
+        address escrow = ics20Transfer.getEscrow(clientId);
+        vm.assertNotEq(escrow, address(0), "Escrow address must not be zero");
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(
+            IAccessManager.setTargetFunctionRole,
+            (escrow, IBCRolesLib.rateLimiterSelectors(), IBCRolesLib.RATE_LIMITER_ROLE)
+        );
+        calls[1] = abi.encodeCall(IAccessManager.grantRole, (IBCRolesLib.RATE_LIMITER_ROLE, rateLimiterAddress, 0));
 
         vm.startBroadcast();
 
-        escrow.grantRateLimiterRole(rateLimiterAddress);
+        IAccessManagerMulticall(accessManagerDeployment.accessManager).multicall(calls);
 
         vm.stopBroadcast();
     }

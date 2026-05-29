@@ -8,7 +8,7 @@ eth_rpc := env_var_or_default("ETH_RPC", "")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 _wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
-_timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
+_timelock_controller := shell('if [ -n "$1" ] && [ -n "$2" ] && [ -f "deployments/$1/$2.json" ]; then jq -r ".ics26Router.timelockAdmin" "deployments/$1/$2.json"; else echo "0x0000000000000000000000000000000000000000"; fi', environment, chain)
 
 _verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
@@ -195,16 +195,16 @@ deploy-timelock-controller: (_pre-script _broadcast_flags)
     forge script script/DeployTimelockController.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics26-router: (_pre-script _broadcast_flags)
+deploy-v3-access-manager: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    forge script script/DeployProxiedICS26Router.sol -vvvv {{_broadcast_flags}}
+    forge script script/DeployV3AccessManager.sol:DeployV3AccessManager -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics20-transfer: (_pre-script _broadcast_flags)
+deploy-v3-core: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    forge script script/DeployProxiedICS20Transfer.sol -vvvv {{_broadcast_flags}}
+    forge script script/DeployV3Core.sol:DeployV3Core -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
 deploy-light-client: (_pre-script _broadcast_flags)
@@ -264,9 +264,9 @@ ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
+    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
     role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_ROLE=$(jq -r "deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    export REVOKE_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
     echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
     forge script script/RevokeRole.sol -vvvv {{_broadcast_flags}}
 
@@ -290,9 +290,9 @@ timelock-grant-role timelock_function nonce="": (_pre-script _timelock_flags) &&
     #!/bin/bash
     set -euo pipefail
     contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
-    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
     echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
     just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
 
@@ -427,9 +427,9 @@ _grant-role script_flags:
     #!/bin/bash
     set -euo pipefail
     contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
-    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
     echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
     forge script script/GrantRole.sol -vvvv {{script_flags}}
 

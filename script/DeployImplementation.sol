@@ -10,10 +10,7 @@ import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol";
 import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
-import { IIBCUUPSUpgradeable } from "solidity-ibc-eureka/contracts/interfaces/IIBCUUPSUpgradeable.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
 import { Script } from "forge-std/Script.sol";
 import { ScriptHelperConstants } from "./GenerateScriptHelperJSON.sol";
 

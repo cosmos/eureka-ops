@@ -7,11 +7,8 @@ import { Deployments } from "./helpers/Deployments.sol";
 import { DeploymentVerifier } from "./VerifyDeployment.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
-import { IIBCUUPSUpgradeable } from "solidity-ibc-eureka/contracts/interfaces/IIBCUUPSUpgradeable.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
-import { Script } from "forge-std/Script.sol";
 
 contract DeployProxiedICS26RouterScript is DeploymentVerifier {
     using stdJson for string;
@@ -23,20 +20,22 @@ contract DeployProxiedICS26RouterScript is DeploymentVerifier {
         string memory json = vm.readFile(path);
 
         ProxiedICS26RouterDeployment memory deployment = loadProxiedICS26RouterDeployment(vm, json);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
 
         vm.assertEq(deployment.implementation, address(0), "Implementation address must be zero for deployment");
         vm.assertEq(deployment.proxy, address(0), "Proxy address must be zero for deployment");
+        vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
 
         vm.startBroadcast();
 
         deployment.implementation = address(new ICS26Router());
 
-        ERC1967Proxy routerProxy = deployProxiedICS26Router(deployment);
+        ERC1967Proxy routerProxy = deployProxiedICS26Router(deployment, accessManagerDeployment.accessManager);
         deployment.proxy = payable(address(routerProxy));
 
         vm.stopBroadcast();
 
-        verifyICS26Router(deployment);
+        verifyICS26Router(deployment, accessManagerDeployment);
 
         vm.serializeAddress("ics26Router", "proxy", address(routerProxy));
         vm.serializeAddress("ics26Router", "implementation", deployment.implementation);
@@ -52,23 +51,12 @@ contract DeployProxiedICS26RouterScript is DeploymentVerifier {
         return address(routerProxy);
     }
 
-    
-    function deployProxiedICS26Router(Deployments.ProxiedICS26RouterDeployment memory deployment) public returns (ERC1967Proxy) {
-        require(msg.sender == deployment.timelockAdmin, "sender must be timelockAdmin");
 
+    function deployProxiedICS26Router(Deployments.ProxiedICS26RouterDeployment memory deployment, address accessManager) public returns (ERC1967Proxy) {
         ERC1967Proxy routerProxy = new ERC1967Proxy(
             deployment.implementation,
-            abi.encodeCall(ICS26Router.initialize, (deployment.timelockAdmin))
+            abi.encodeCall(ICS26Router.initialize, (accessManager))
         );
-
-        ICS26Router ics26Router = ICS26Router(address(routerProxy));
-
-        for (uint256 i = 0; i < deployment.relayers.length; i++) {
-            ics26Router.grantRole(ics26Router.RELAYER_ROLE(), deployment.relayers[i]);
-        }
-
-        ics26Router.grantRole(ics26Router.PORT_CUSTOMIZER_ROLE(), deployment.portCustomizer);
-        ics26Router.grantRole(ics26Router.CLIENT_ID_CUSTOMIZER_ROLE(), deployment.clientIdCustomizer);
 
         return routerProxy;
     }
