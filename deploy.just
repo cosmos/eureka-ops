@@ -5,6 +5,20 @@ chain := env_var_or_default("EUREKA_CHAIN", "")
 sender := env_var_or_default("SENDER", "")
 mnemonic_index := env_var_or_default("MNEMONIC_INDEX", "")
 eth_rpc := env_var_or_default("ETH_RPC", "")
+# zk algorithm for the generated client state; MUST match the existing client (groth16 or plonk)
+proof_type := env_var_or_default("PROOF_TYPE", "groth16")
+
+## proof-api source (default for fresh light client state)
+# host:port of a running proof-api / eureka-relayer gRPC server (uses server reflection, so no proto file is needed)
+proof_api_addr := env_var_or_default("PROOF_API_ADDR", "localhost:3000")
+# fully-qualified gRPC service; leave empty to auto-discover via reflection (relayer.RelayerService on v0.7.x, proofapi.ProofApiService on v0.8.x)
+proofapi_service := env_var_or_default("PROOFAPI_SERVICE", "")
+# proof-api source/destination chain identifiers (Cosmos chain = src, Ethereum chain = dst), exactly as configured in the proof-api module (e.g. dst "0x1")
+src_chain := env_var_or_default("SRC_CHAIN", "")
+dst_chain := env_var_or_default("DST_CHAIN", "")
+# extra grpcurl flags (e.g. "-plaintext" for non-TLS, or "" plus -H auth headers)
+grpcurl_flags := env_var_or_default("GRPCURL_FLAGS", "-plaintext")
+
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 _wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
@@ -219,6 +233,75 @@ deploy-update-light-client-state:
     forge script script/helpers/UpdateLightClientState.sol
 
 [group('deploy')]
+[doc('Fetch FRESH trusted state for a (possibly expired) light client from a running proof-api and write it into the deployment JSON, so the client can be redeployed + migrated. Requires PROOF_API_ADDR, SRC_CHAIN, DST_CHAIN, grpcurl, python3. See runbooks/recover-expired-light-client.md.')]
+deploy-fresh-light-client-state:
+    #!/bin/bash
+    set -euo pipefail
+
+    deployment_file="deployments/{{environment}}/{{chain}}.json"
+    test -f "$deployment_file" || { echo "Deployment file $deployment_file not found"; exit 1; }
+    test -n "{{proof_api_addr}}" || { echo "PROOF_API_ADDR is not set (host:port of a running proof-api gRPC server)"; exit 1; }
+    test -n "{{src_chain}}" || { echo "SRC_CHAIN is not set (proof-api source chain id, the Cosmos chain)"; exit 1; }
+    test -n "{{dst_chain}}" || { echo "DST_CHAIN is not set (proof-api destination chain id, the Ethereum chain, e.g. 0x1)"; exit 1; }
+    command -v grpcurl >/dev/null || { echo "grpcurl not found (needed to call the proof-api)"; exit 1; }
+    command -v python3 >/dev/null || { echo "python3 not found (needed to decode the response)"; exit 1; }
+
+    read -p "Client ID to generate fresh state for: " client_id
+    entry=$(jq -c --arg cid "$client_id" '.light_clients | to_entries[] | select(.value.clientId==$cid)' "$deployment_file")
+    test -n "$entry" || { echo "Client ID '$client_id' not found in $deployment_file"; exit 1; }
+    idx=$(jq -r '.key' <<<"$entry")
+    echo "Found '$client_id' at light_clients[\"$idx\"]"
+
+    # Discover the gRPC service via reflection unless one was provided (relayer.RelayerService on v0.7.x, proofapi.ProofApiService on v0.8.x)
+    service="{{proofapi_service}}"
+    if [ -z "$service" ]; then
+      service=$(grpcurl {{grpcurl_flags}} "{{proof_api_addr}}" list | grep -E '(^|\.)(RelayerService|ProofApiService)$' | head -1 || true)
+    fi
+    test -n "$service" || { echo "Could not find a CreateClient service via reflection on {{proof_api_addr}}. Set PROOFAPI_SERVICE. Services seen:"; grpcurl {{grpcurl_flags}} "{{proof_api_addr}}" list || true; exit 1; }
+
+    # sp1_verifier is required by CreateClient but does NOT affect the trusted state we extract;
+    # reuse the existing client verifier if present, otherwise the zero address.
+    sp1_verifier=$(jq -r '.value.verifier // empty' <<<"$entry")
+    sp1_verifier=${sp1_verifier:-0x0000000000000000000000000000000000000000}
+
+    echo
+    echo "Requesting fresh client state from proof-api:"
+    echo "  endpoint:    {{proof_api_addr}}  service=$service  (src={{src_chain}} dst={{dst_chain}})"
+    echo "  zk algo:     {{proof_type}} (MUST match the existing client zk algorithm)"
+    echo "  sp1_verifier:$sp1_verifier (discarded; only client+consensus state are used)"
+    read -p "Confirm: (y/n) " -n 1 -r; echo
+    [[ $REPLY =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+
+    req=$(jq -nc --arg s "{{src_chain}}" --arg d "{{dst_chain}}" --arg v "$sp1_verifier" --arg z "{{proof_type}}" \
+      '{src_chain:$s, dst_chain:$d, parameters:{sp1_verifier:$v, zk_algorithm:$z} }')
+
+    resp=$(grpcurl {{grpcurl_flags}} -d "$req" "{{proof_api_addr}}" "$service/CreateClient")
+
+    txb64=$(jq -r '.tx // empty' <<<"$resp")
+    test -n "$txb64" || { echo "proof-api returned no tx. Response: $resp"; exit 1; }
+    # proto bytes come back base64; turn into 0x-prefixed creation calldata
+    calldata="0x$(printf '%s' "$txb64" | base64 -d | od -An -v -tx1 | tr -d ' \n')"
+    echo "Received creation calldata (${#calldata} hex chars). Decoding constructor args..."
+
+    # Structurally decode trustedClientState + trustedConsensusStateHash (no dependency on local bytecode/version)
+    decoded=$(CALLDATA="$calldata" python3 script/helpers/decode_create_client.py)
+    client_state=$(jq -er '.trustedClientState' <<<"$decoded")
+    consensus_hash=$(jq -er '.trustedConsensusStateHash' <<<"$decoded")
+
+    echo
+    echo "New trustedClientState:        $client_state"
+    echo "New trustedConsensusStateHash: $consensus_hash"
+
+    tmp=$(mktemp)
+    jq --arg cs "$client_state" --arg h "$consensus_hash" \
+      ".light_clients[\"$idx\"].trustedClientState = \$cs | .light_clients[\"$idx\"].trustedConsensusStateHash = \$h" \
+      "$deployment_file" > "$tmp" && mv "$tmp" "$deployment_file"
+
+    echo
+    echo "Updated $deployment_file (light_clients[\"$idx\"])."
+    echo "Review the diff (git diff), then run 'just deploy-light-client' for $client_id."
+
+[group('deploy')]
 deploy-relayer-helper: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
@@ -405,12 +488,13 @@ _timelock-params contract_name timelock_function nonce:
     echo 
     echo "Timelock info:"
     echo "{{separator}}"
+    echo "address: {{ _timelock_controller }}"
     echo "function: {{timelock_function}}"
-    echo "to: $to"
+    echo "target: $to"
     echo "value: 0"
     echo "data: $calldata"
-    echo "predecessor: 0x"
-    echo "salt: 0x"
+    echo "predecessor: {{zero_bytes32}}"
+    echo "salt: {{zero_bytes32}}"
     echo "delay: $timelock_delay"
     echo "timelock calldata: $timelock_calldata"
 
@@ -422,6 +506,9 @@ _timelock-params contract_name timelock_function nonce:
         echo "{{separator}}"
         just get_safe_hashes {{ nonce }} $timelock_calldata {{ _timelock_controller }}
     fi
+
+    echo
+    echo "Hint: copy the TimelockController ABI to your clipboard with: just copy-abi-to-clipboard TimelockController"
 
 _grant-role script_flags:
     #!/bin/bash

@@ -61,7 +61,7 @@ contract AddLightClient is DeploymentVerifier {
         verifyICS07Tendermint(deployment, ics26RouterDeployment);
 
         string memory idx = Strings.toString(deploymentIndex);
-        string memory key = string.concat(".light_clients['", idx, "']");
+        string memory key = string.concat(".light_clients.", idx);
 
         vm.writeJson(deployment.clientId, path, string.concat(key, ".clientId"));
     }
