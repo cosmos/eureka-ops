@@ -78,6 +78,7 @@ PROOF_TYPE=groth16            # MUST match the existing client's zk algorithm
 SAFE_ADDRESS=0x...
 ```
 
+> [!WARNING]  
 > ⚠️ **`PRIVATE_KEY` footgun:** setting it to *any* value (even zeros) makes the recipes use `--private-key` instead of the Ledger. Leave it commented to use a Ledger.
 
 `just info-env` prints the resolved settings (private key redacted) — sanity-check the chain, RPC, and that the broadcast flags show the signer you expect.
