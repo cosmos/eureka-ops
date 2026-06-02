@@ -16,6 +16,7 @@ You **cannot** revive an expired client with a normal `updateClient`. The fix is
 2. **Deploy a new `SP1ICS07Tendermint` contract** initialised with that fresh state (existing vkeys/verifier reused).
 3. **Migrate** the client ID to point at the new contract (`ics26Router.migrateClient`), via the timelock + Gnosis Safe.
 
+> [!NOTE]
 > Why step 1 is special for an *expired* client: the pre-existing `just deploy-update-light-client-state` reads trusted state from the **on-chain contract** (`getClientState()`), which is stale/expired and therefore useless. The `deploy-fresh-light-client-state` recipe instead pulls **fresh** state from the proof-api.
 
 ---
