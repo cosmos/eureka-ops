@@ -111,6 +111,7 @@ A configured pair does *not* return `Module not found`.
 ```
 just deploy-fresh-light-client-state      # enter the client ID when prompted, confirm y
 ```
+> [!NOTE] 
 > ⏱️ **`CreateClient` is slow (~3–4 min)** — the relayer fetches headers/validator sets from the Cosmos RPC. The recipe sets **no grpcurl timeout**, so just wait. **Do not abort and retry**: a `CreateClient` keeps running server-side for the full duration even after you disconnect, and blocks subsequent calls. The k8s port-forward survives the long request.
 
 ### 6d. Verify
