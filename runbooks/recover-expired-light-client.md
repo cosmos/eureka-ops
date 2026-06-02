@@ -27,8 +27,8 @@ You **cannot** revive an expired client with a normal `updateClient`. The fix is
 - **`solidity-ibc-eureka`** — upstream Solidity contracts + the `operator` binary. The deployed contracts were compiled from a tagged version of this repo (pinned in `package.json` as `@cosmos/solidity-ibc-eureka`).
 - **The proof-api (a.k.a. eureka-relayer)** — a gRPC service that builds unsigned IBC txs. Its `CreateClient` method queries the Cosmos RPC and returns the **creation calldata** for a fresh `SP1ICS07Tendermint` (no proof generated). We use it as the source of fresh trusted state. It runs in k8s (see step 1 for access).
 
-### ⚠️ Version drift — verify against the live chain, not local source
-The version the contracts were **deployed** from can differ from what the repo currently **compiles** and from the **running** proof-api image. Concretely, on the testnet recovery the live `ICS26Router` used OZ `AccessControl` while the pinned `solidity-v2.0.0` source uses `AccessManaged`. **Always confirm access control / addresses against the live contract** (`cast call`), not the checked-out source.
+> [!WARNING]  
+> The version the contracts were **deployed** from can differ from what the repo currently **compiles** and from the **running** proof-api image. Concretely, on the testnet recovery the live `ICS26Router` used OZ `AccessControl` while the pinned `solidity-v2.0.0` source uses `AccessManaged`. **Always confirm access control / addresses against the live contract** (`cast call`), not the checked-out source.
 
 ---
 
