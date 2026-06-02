@@ -94,6 +94,7 @@ The proof-api runs in k8s. Port-forward it to `localhost:3000`:
 kubectl --context <eks-cluster-context> \
   -n <namespace> port-forward pod/<proof-api-pod> 3000:3000
 ```
+> [!NOTE]
 > 🔒 The concrete cluster context (ARN), namespace, and pod naming convention are internal infra and live in the internal docs, not this public repo.
 
 Find the pod with `kubectl --context <eks-cluster-context> -n <namespace> get pods | grep relayer-api`. Confirm it's up: `grpcurl -plaintext localhost:3000 list` should list `relayer.RelayerService` (v0.7.x) or `proofapi.ProofApiService` (v0.8.x).
