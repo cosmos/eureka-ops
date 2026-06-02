@@ -129,7 +129,7 @@ just deploy-light-client      # enter the client ID, confirm "deploy a copy" wit
 This deploys a new `SP1ICS07Tendermint` with the fresh state from step 1, **reusing** the existing vkeys + verifier, and writes the new `implementation` (and `verifier`) into the deployment JSON.
 
 ### ⚠️ Gotcha: OpenZeppelin version pin
-The `solidity-v2.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
+The `solidity-v3.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
 
 ### Verify
 ```
