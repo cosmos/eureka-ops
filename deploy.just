@@ -13,7 +13,7 @@ proof_type := env_var_or_default("PROOF_TYPE", "groth16")
 proof_api_addr := env_var_or_default("PROOF_API_ADDR", "localhost:3000")
 # fully-qualified gRPC service; leave empty to auto-discover via reflection (relayer.RelayerService on v0.7.x, proofapi.ProofApiService on v0.8.x)
 proofapi_service := env_var_or_default("PROOFAPI_SERVICE", "")
-# proof-api source/destination chain identifiers (Cosmos chain = src, Ethereum chain = dst), exactly as configured in the proof-api module (e.g. dst "0x1")
+# proof-api source/destination chain identifiers (Cosmos chain = src, Ethereum chain = dst), exactly as configured in the proof-api module (decimal Eth chain id, e.g. dst "11155111" for Sepolia)
 src_chain := env_var_or_default("SRC_CHAIN", "")
 dst_chain := env_var_or_default("DST_CHAIN", "")
 # extra grpcurl flags (e.g. "-plaintext" for non-TLS, or "" plus -H auth headers)
@@ -242,11 +242,11 @@ deploy-fresh-light-client-state:
     test -f "$deployment_file" || { echo "Deployment file $deployment_file not found"; exit 1; }
     test -n "{{proof_api_addr}}" || { echo "PROOF_API_ADDR is not set (host:port of a running proof-api gRPC server)"; exit 1; }
     test -n "{{src_chain}}" || { echo "SRC_CHAIN is not set (proof-api source chain id, the Cosmos chain)"; exit 1; }
-    test -n "{{dst_chain}}" || { echo "DST_CHAIN is not set (proof-api destination chain id, the Ethereum chain, e.g. 0x1)"; exit 1; }
+    test -n "{{dst_chain}}" || { echo "DST_CHAIN is not set (proof-api destination chain id, the Ethereum chain as a decimal chain id, e.g. 11155111 for Sepolia)"; exit 1; }
     command -v grpcurl >/dev/null || { echo "grpcurl not found (needed to call the proof-api)"; exit 1; }
     command -v python3 >/dev/null || { echo "python3 not found (needed to decode the response)"; exit 1; }
 
-    read -p "Client ID to generate fresh state for: " client_id
+    read -rp "Client ID to generate fresh state for: " client_id
     entry=$(jq -c --arg cid "$client_id" '.light_clients | to_entries[] | select(.value.clientId==$cid)' "$deployment_file")
     test -n "$entry" || { echo "Client ID '$client_id' not found in $deployment_file"; exit 1; }
     idx=$(jq -r '.key' <<<"$entry")
