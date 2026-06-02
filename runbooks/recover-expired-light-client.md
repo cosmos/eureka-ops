@@ -27,8 +27,8 @@ You **cannot** revive an expired client with a normal `updateClient`. The fix is
 - **`solidity-ibc-eureka`** — upstream Solidity contracts + the `operator` binary. The deployed contracts were compiled from a tagged version of this repo (pinned in `package.json` as `@cosmos/solidity-ibc-eureka`).
 - **The proof-api (a.k.a. eureka-relayer)** — a gRPC service that builds unsigned IBC txs. Its `CreateClient` method queries the Cosmos RPC and returns the **creation calldata** for a fresh `SP1ICS07Tendermint` (no proof generated). We use it as the source of fresh trusted state. It runs in k8s (see step 1 for access).
 
-> [!WARNING]  
-> The version the contracts were **deployed** from can differ from what the repo currently **compiles** and from the **running** proof-api image. Concretely, on the testnet recovery the live `ICS26Router` used OZ `AccessControl` while the pinned `solidity-v2.0.0` source uses `AccessManaged`. **Always confirm access control / addresses against the live contract** (`cast call`), not the checked-out source.
+> [!WARNING]
+> The version the contracts were **deployed** from can differ from what the repo currently **compiles** and from the **running** proof-api image. Concretely, on the testnet recovery the live `ICS26Router` (deployed from `solidity-v2.0.0`) uses OZ `AccessControl`, while newer upstream source (`solidity-v3.0.0`+) uses `AccessManaged` — reading the wrong checkout gives you the wrong access-control model. **Always confirm access control / addresses against the live contract** (`cast call`), not the checked-out source.
 
 ---
 
@@ -45,17 +45,18 @@ You **cannot** revive an expired client with a normal `updateClient`. The fix is
 ## 4. Prerequisites
 
 - Tooling: `foundry` (forge/cast/chisel), `bun`, `just`, `jq`, `fzf`, **`grpcurl`**, **`python3`**, `kubectl`.
-- **Proof-api reachable** for step 1 (k8s port-forward — see step 1).
-- A **deploy signer with gas** for step 2 (any funded EOA; need not be a Safe owner — deploying is permissionless).
-- A **Safe owner** + the Safe for step 3.
+- **Proof-api reachable** for [step 1](#6-step-1--generate-fresh-trusted-state) (k8s port-forward).
+- A **deploy signer with gas** for [step 2](#7-step-2--deploy-the-new-contract) (any funded EOA; need not be a Safe owner — deploying is permissionless).
+- A **Safe owner** + the Safe for [step 3](#8-step-3--migrate-the-client-id-timelock--gnosis-safe).
 
+> [!NOTE]
 > **Signing note:** the `just` deploy/timelock recipes sign via `forge`, which supports **Ledger, raw private key, mnemonic, or an encrypted keystore** — but **not MetaMask** (no CLI bridge). For step 3 the Safe transactions are signed in the **Safe UI** (MetaMask works there) or verified via the repo's EIP-712 hash recipes.
 
 ---
 
 ## 5. Step 0 — point the repo at the right deployment (`.eureka-env`)
 
-`just` auto-loads `.eureka-env` (gitignored). Minimal example for Sepolia:
+`just` auto-loads `.eureka-env` (gitignored). See [`.eureka-env.example`](../.eureka-env.example) for a full template; minimal example for Sepolia:
 
 ```
 EUREKA_ENVIRONMENT=testnet
@@ -78,7 +79,7 @@ PROOF_TYPE=groth16            # MUST match the existing client's zk algorithm
 SAFE_ADDRESS=0x...
 ```
 
-> [!WARNING]  
+> [!WARNING]
 > ⚠️ **`PRIVATE_KEY` footgun:** setting it to *any* value (even zeros) makes the recipes use `--private-key` instead of the Ledger. Leave it commented to use a Ledger.
 
 `just info-env` prints the resolved settings (private key redacted) — sanity-check the chain, RPC, and that the broadcast flags show the signer you expect.
@@ -112,7 +113,7 @@ A configured pair does *not* return `Module not found`.
 ```
 just deploy-fresh-light-client-state      # enter the client ID when prompted, confirm y
 ```
-> [!NOTE] 
+> [!NOTE]
 > ⏱️ **`CreateClient` is slow (~3–4 min)** — the relayer fetches headers/validator sets from the Cosmos RPC. The recipe sets **no grpcurl timeout**, so just wait. **Do not abort and retry**: a `CreateClient` keeps running server-side for the full duration even after you disconnect, and blocks subsequent calls. The k8s port-forward survives the long request.
 
 ### 6d. Verify
@@ -131,7 +132,8 @@ just deploy-light-client      # enter the client ID, confirm "deploy a copy" wit
 This deploys a new `SP1ICS07Tendermint` with the fresh state from step 1, **reusing** the existing vkeys + verifier, and writes the new `implementation` (and `verifier`) into the deployment JSON.
 
 ### ⚠️ Gotcha: OpenZeppelin version pin
-The `solidity-v3.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
+> [!IMPORTANT]
+> The `solidity-v2.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
 
 ### Verify
 ```
@@ -175,6 +177,7 @@ just timelock-migrate-light-client execute <safe-nonce+1>
 ```
 Submit the second Safe tx (same `to`, `data` = the `execute(...)` calldata), sign + execute. This calls `timelock.execute → router.migrateClient`, repointing the client ID.
 
+> [!TIP]
 > You can confirm the scheduled op is ready before executing:
 > ```
 > ID=$(cast call <timelock> 'hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)' <router> 0 <migrateCalldata> 0x00..00 0x00..00 --rpc-url <eth-rpc>)
