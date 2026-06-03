@@ -41,7 +41,7 @@ shadow-deploy-light-client chain shadow_env port client_id="":
     deployer="${SHADOW_FORK_DEPLOYER:-0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266}"
     fork_rpc="http://127.0.0.1:{{port}}"
     if [ -n "{{client_id}}" ]; then
-        export SP1_CLIENT_ID="{{client_id}}"
+        export CLIENT_ID="{{client_id}}"
     fi
     export SP1_DEPLOY_COPY=true
     export DEPLOYMENT_ENV="{{shadow_env}}"

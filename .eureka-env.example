@@ -9,7 +9,23 @@ SENDER=0x0000000000000000000000000000000000000000
 
 # `PRIVATE_KEY` is the private key of the account that will be used to sign non-timelock operations
 # NOTE: If you set this, it will override the `SENDER` address, and ledger signing will not be used
-PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
+# WARNING: setting it to ANY value (even zeros) disables ledger signing — leave it commented out to use a ledger
+# PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
 
 # `ETHERSCAN_API_KEY` is only necessary if you are going to deploy new contracts (for example, if you are the facilitator of a operation)
 ETHERSCAN_API_KEY=0000000000000000000000000000000000
+
+# --- Light-client recovery (see runbooks/recover-expired-light-client.md) ---
+
+# Proof-api gRPC endpoint (e.g. a k8s port-forward) used by `deploy-fresh-light-client-state`
+# PROOF_API_ADDR=localhost:3000
+# Fully-qualified gRPC service; leave unset to auto-discover via server reflection
+# PROOFAPI_SERVICE=
+# Proof-api source/destination module identifiers — must match the proof-api's configured module names
+# SRC_CHAIN=<cosmos-chain-id>           # e.g. provider
+# DST_CHAIN=<eth-chain-id>              # decimal chain id, e.g. 11155111 for Sepolia
+# zk algorithm for the generated client state; MUST match the existing client (groth16 or plonk)
+# PROOF_TYPE=groth16
+
+# Gnosis Safe that holds PROPOSER on the timelock (used by the safe.just hash recipes)
+# SAFE_ADDRESS=0x0000000000000000000000000000000000000000

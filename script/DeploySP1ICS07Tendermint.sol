@@ -21,8 +21,11 @@ contract DeploySP1ICS07TendermintScript is DeploymentVerifier, SP1ICS07Tendermin
         SP1ICS07TendermintDeployment[] memory deployments =
             loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
 
-        string memory clientID = vm.envOr("SP1_CLIENT_ID", string(""));
-        if (bytes(clientID).length == 0) {
+        // CLIENT_ID env var allows non-interactive runs (e.g. CI); fall back to prompting when unset.
+        string memory clientID;
+        if (vm.envExists("CLIENT_ID")) {
+            clientID = vm.envString("CLIENT_ID");
+        } else {
             clientID = vm.prompt("Client ID to deploy (leave empty for a new deployment)");
         }
 
@@ -66,7 +69,9 @@ contract DeploySP1ICS07TendermintScript is DeploymentVerifier, SP1ICS07Tendermin
         vm.stopBroadcast();
 
         string memory idx = Strings.toString(deploymentIndex);
-        string memory key = string.concat(".light_clients['", idx, "']");
+        // NOTE: vm.writeJson only resolves dot-path segments; bracket syntax (".light_clients['0']")
+        // is NOT parsed and instead creates a junk top-level key. Use dot notation for the object key.
+        string memory key = string.concat(".light_clients.", idx);
 
         vm.writeJson(vm.toString(deployment.implementation), path, string.concat(key, ".implementation"));
         vm.writeJson(deployment.verifier, path, string.concat(key, ".verifier"));
