@@ -39,9 +39,10 @@ contract UpdateLightClientState is Script, Deployments {
 
         bytes32 consensusStateHash = ics07Tendermint.getConsensusStateHash(clientState.latestHeight.revisionHeight);
 
-                // Update the deployment JSON
-        vm.writeJson(vm.toString(clientStateBz), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedClientState"));
-        vm.writeJson(vm.toString(consensusStateHash), path, string.concat(".light_clients['", Strings.toString(deploymentIndex), "'].trustedConsensusStateHash"));
+        string memory idx = Strings.toString(deploymentIndex);
+        string memory key = string.concat(".light_clients.", idx);
+
+        vm.writeJson(vm.toString(clientStateBz), path, string.concat(key, ".trustedClientState"));
+        vm.writeJson(vm.toString(consensusStateHash), path, string.concat(key, ".trustedConsensusStateHash"));
     }
 }
-

@@ -28,7 +28,13 @@ contract DeploySP1ICS07TendermintScript is DeploymentVerifier {
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
         SP1ICS07TendermintDeployment[] memory deployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
 
-        string memory clientID = vm.prompt("Client ID to deploy (leave empty for a new deployment)");
+        // CLIENT_ID env var allows non-interactive runs (e.g. CI); fall back to prompting when unset.
+        string memory clientID;
+        if (vm.envExists("CLIENT_ID")) {
+            clientID = vm.envString("CLIENT_ID");
+        } else {
+            clientID = vm.prompt("Client ID to deploy (leave empty for a new deployment)");
+        }
 
         uint256 deploymentIndex = UINT256_MAX;
         for (uint256 i = 0; i < deployments.length; i++) {
@@ -66,7 +72,9 @@ contract DeploySP1ICS07TendermintScript is DeploymentVerifier {
         vm.stopBroadcast();
 
         string memory idx = Strings.toString(deploymentIndex);
-        string memory key = string.concat(".light_clients['", idx, "']");
+        // NOTE: vm.writeJson only resolves dot-path segments; bracket syntax (".light_clients['0']")
+        // is NOT parsed and instead creates a junk top-level key. Use dot notation for the object key.
+        string memory key = string.concat(".light_clients.", idx);
 
         vm.writeJson(vm.toString(deployment.implementation), path, string.concat(key, ".implementation"));
         vm.writeJson(deployment.verifier, path, string.concat(key, ".verifier"));
