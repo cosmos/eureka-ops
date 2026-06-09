@@ -98,7 +98,7 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
 5. Facilitator prepares the SP1 v6.1 light-client migrations in the same branch.
 
-   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients. For `mainnet` and `testnet`, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local` and `shadow-*` rehearsals.
+   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients. For `mainnet`, `testnet`, and non-default shadow environments, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia` rehearsals.
 
    ```bash
    just deploy-light-client

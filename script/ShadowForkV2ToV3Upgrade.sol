@@ -33,7 +33,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         SP1ICS07TendermintDeployment[] memory ics07Deployments =
             loadSP1ICS07TendermintDeployments(vm, json, ics26.proxy);
         string[] memory sp1ClientIds = vm.envOr("SP1_CLIENT_IDS", ",", new string[](0));
-        bool canDeployVerifier = Strings.equal(deployEnv, "local") || vm.envOr("SP1_CAN_DEPLOY_VERIFIER", false);
+        bool canDeployVerifier = _canDeployVerifier(deployEnv);
 
         vm.assertEq(accessManagerDeployment.accessManager, address(0), "deployment JSON already has accessManager");
         vm.assertNotEq(ics26.proxy, address(0), "ICS26Router proxy must be set");

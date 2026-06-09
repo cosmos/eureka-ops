@@ -12,6 +12,11 @@ import { SP1MockVerifier } from "@sp1-contracts/SP1MockVerifier.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 
 abstract contract SP1ICS07TendermintDeployer is Deployments {
+    function _canDeployVerifier(string memory deployEnv) internal pure returns (bool) {
+        return Strings.equal(deployEnv, "local") || Strings.equal(deployEnv, "shadow-mainnet")
+            || Strings.equal(deployEnv, "shadow-sepolia");
+    }
+
     function deploySP1ICS07Tendermint(
         SP1ICS07TendermintDeployment memory deployment,
         bool canDeployVerifier
@@ -26,7 +31,7 @@ abstract contract SP1ICS07TendermintDeployer is Deployments {
 
         if (keccak256(bytes(deployment.verifier)) == keccak256(bytes("mock"))) {
             if (!canDeployVerifier) {
-                revert("Mock SP1 verifier only allowed for local/shadow deployments");
+                revert("Mock SP1 verifier only allowed for local/default shadow deployments");
             }
             verifier = address(new SP1MockVerifier());
         } else if (bytes(deployment.verifier).length > 0) {
