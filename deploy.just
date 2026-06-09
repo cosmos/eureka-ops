@@ -319,15 +319,6 @@ deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
 ops-grant-rate-limiter-role: (ops-script "GrantRateLimiterRole" _broadcast_flags)
 
 [group('ops')]
-ops-grant-metadata-role: (ops-script "GrantMetadataRole" _broadcast_flags)
-
-[group('ops')]
-ops-revoke-metadata-role: (ops-script "RevokeMetadataRole" _broadcast_flags)
-
-[group('ops')]
-ops-set-metadata: (ops-script "SetTokenMetadata" _broadcast_flags)
-
-[group('ops')]
 ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
 
 [group('ops')]

@@ -263,3 +263,31 @@ initialize-escrow-v2-params client_id: info-env
   echo "to: $escrow"
   echo "value: 0"
   echo "data: $calldata"
+
+[group('upgrade-params')]
+initialize-known-escrows-v2-params: info-env
+  #!/bin/bash
+  set -euo pipefail
+  deployment_path="deployments/{{environment}}/{{chain}}.json"
+  deployment=$(cat "$deployment_path")
+  ics20=$(echo "$deployment" | jq -re ".ics20Transfer.proxy")
+  calldata=$({{cast_binary}} calldata "{{INITIALIZE_ESCROW_V2_SIG}}")
+
+  while IFS= read -r client_id; do
+    if [ -z "$client_id" ]; then
+      continue
+    fi
+
+    escrow=$({{cast_binary}} call "$ics20" "getEscrow(string)(address)" "$client_id")
+    if [ "$escrow" = "{{zero_address}}" ]; then
+      continue
+    fi
+
+    echo "client_id: $client_id"
+    echo "function: initializeV2"
+    echo "to: $escrow"
+    echo "value: 0"
+    echo "data: $calldata"
+
+    echo
+  done < <(echo "$deployment" | jq -r '.light_clients[]?.clientId // empty')

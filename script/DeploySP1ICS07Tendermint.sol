@@ -59,9 +59,10 @@ contract DeploySP1ICS07TendermintScript is DeploymentVerifier, SP1ICS07Tendermin
         for (uint256 j = 0; j < deployment.merklePrefix.length; j++) {
             merklePrefix[j] = bytes(deployment.merklePrefix[j]);
         }
+        bool canDeployVerifier = Strings.equal(deployEnv, "local") || vm.envOr("SP1_CAN_DEPLOY_VERIFIER", false);
 
         vm.startBroadcast();
-        SP1ICS07Tendermint ics07Tendermint = deploySP1ICS07Tendermint(deployment);
+        SP1ICS07Tendermint ics07Tendermint = deploySP1ICS07Tendermint(deployment, canDeployVerifier);
 
         deployment.implementation = address(ics07Tendermint);
         deployment.verifier = vm.toString(address(ics07Tendermint.VERIFIER()));

@@ -9,6 +9,7 @@ abstract contract Deployments {
 
     string internal constant DEPLOYMENT_DIR = "/deployments/";
 
+    // Role members are tracked on the proxy deployment structs that own those roles.
     struct AccessManagerDeployment {
         address accessManager;
     }

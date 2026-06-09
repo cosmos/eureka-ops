@@ -111,19 +111,9 @@ The implementation address will be updated in the deployment JSON entry for the 
 
 After the timelock delay has passed, do the above steps again but replace `schedule` with `execute`
 
-### Updating IBCERC20 Metadata
+### IBCERC20 Metadata
 
-> ⚠️ Only a wallet with the Token Operator role is able to update the IBCERC20 Metadata
-
-To update the Metadata for an IBCERC20 contract, you need to do the following:
-1. Grant the metadata role for the IBCERC20 contract with:
-    ```bash
-    just ops-grant-metadata-role # You will be prompted for the IBCERC20 Address and the address of the grantee
-    ```
-2. Set the metadata:
-    ```bash
-    just ops-set-metadata # You will be prompted for the IBCERC20 Address to update and the values to set
-    ```
+IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Prefer custom ERC20s through the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.
 
 ### Upgrade a contract that is behind a proxy
 
@@ -133,4 +123,3 @@ Run the script to generate the information needed to submit a proposal to the Sa
 ```bash
 just timelock-upgrade-proxy
 ```
-

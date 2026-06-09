@@ -33,6 +33,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         SP1ICS07TendermintDeployment[] memory ics07Deployments =
             loadSP1ICS07TendermintDeployments(vm, json, ics26.proxy);
         string[] memory sp1ClientIds = vm.envOr("SP1_CLIENT_IDS", ",", new string[](0));
+        bool canDeployVerifier = Strings.equal(deployEnv, "local") || vm.envOr("SP1_CAN_DEPLOY_VERIFIER", false);
 
         vm.assertEq(accessManagerDeployment.accessManager, address(0), "deployment JSON already has accessManager");
         vm.assertNotEq(ics26.proxy, address(0), "ICS26Router proxy must be set");
@@ -50,7 +51,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         ics26.implementation = address(new ICS26Router());
         ics20.escrowImplementation = address(new Escrow());
         ics20.ibcERC20Implementation = address(new IBCERC20());
-        uint256 sp1Deployments = _deployPlannedLightClients(ics07Deployments, sp1ClientIds);
+        uint256 sp1Deployments = _deployPlannedLightClients(ics07Deployments, sp1ClientIds, canDeployVerifier);
         vm.stopBroadcast();
         _writePlannedLightClients(path, ics07Deployments, sp1ClientIds);
 
@@ -105,7 +106,8 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
 
     function _deployPlannedLightClients(
         SP1ICS07TendermintDeployment[] memory ics07Deployments,
-        string[] memory clientIds
+        string[] memory clientIds,
+        bool canDeployVerifier
     )
         private
         returns (uint256 deployments)
@@ -119,7 +121,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
             SP1ICS07TendermintDeployment memory deployment = ics07Deployments[deploymentIndex];
             vm.assertNotEq(deployment.merklePrefix.length, 0, "Merkle prefix must not be empty");
 
-            SP1ICS07Tendermint ics07Tendermint = deploySP1ICS07Tendermint(deployment);
+            SP1ICS07Tendermint ics07Tendermint = deploySP1ICS07Tendermint(deployment, canDeployVerifier);
             deployment.implementation = address(ics07Tendermint);
             deployment.verifier = vm.toString(address(ics07Tendermint.VERIFIER()));
             ics07Deployments[deploymentIndex] = deployment;

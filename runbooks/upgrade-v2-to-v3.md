@@ -6,11 +6,11 @@ The v3 upgrade changes contract authorization from per-contract `AccessControl` 
 
 The UUPS upgrades for `ICS20Transfer` and `ICS26Router` must call `initializeV2(address accessManager)` during `upgradeToAndCall`. The order matters: upgrade `ICS20Transfer` first, then `ICS26Router`, then the `Escrow` and `IBCERC20` beacon implementations.
 
-Existing escrow proxies also need `Escrow.initializeV2()` after the escrow beacon has been upgraded. This call can be made by anyone, but it can only run once per escrow.
+Existing escrow proxies also need `Escrow.initializeV2()` after the escrow beacon has been upgraded. Initialize escrows only after the escrow beacon upgrade has executed. This call can be made by anyone, but it can only run once per escrow.
 
 The SP1 v6.1 change is not picked up by upgrading the core proxies. Existing SP1 light clients are standalone contracts, so each upgraded client needs a new `SP1ICS07Tendermint` deployment and a timelocked `ICS26Router.migrateClient(...)` call. Run this as part of the same operations branch and timelock window as the v2-to-v3 upgrade.
 
-`deploy-light-client` writes the future light-client implementation address into `deployments/<environment>/<chain_id>.json`. During the window between deploying the new SP1 client and executing `migrateClient`, `just verify-deployment` is expected to fail because the router still points at the old client. Only run final deployment verification after the migration executes.
+`deploy-light-client` writes the future light-client implementation address into `deployments/<environment>/<chain_id>.json`. During the window between deploying the new SP1 client and executing `migrateClient`, `just verify-deployment` is expected to fail because the deployment JSON points at the new client while the router still maps the client ID to the old implementation. Only run final deployment verification after the migration executes.
 
 ## Shadow fork rehearsal
 
@@ -98,7 +98,7 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
 5. Facilitator prepares the SP1 v6.1 light-client migrations in the same branch.
 
-   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. If the operation should deploy a fresh SP1 v6.1 verifier, set `.verifier` to an empty string before deploying. If reusing an already deployed SP1 v6.1 verifier, set `.verifier` to that address.
+   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients. For `mainnet` and `testnet`, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local` and `shadow-*` rehearsals.
 
    ```bash
    just deploy-light-client
@@ -111,18 +111,20 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
    Schedule the core upgrades:
 
    ```bash
-   just schedule-v3-ics20transfer-upgrade-params <schedule_safe_nonce>
-   just schedule-v3-ics26router-upgrade-params <schedule_safe_nonce>
-   just schedule-escrow-upgrade-params <schedule_safe_nonce>
-   just schedule-ibcerc20-upgrade-params <schedule_safe_nonce>
+   just schedule-v3-ics20transfer-upgrade-params <schedule_safe_nonce_1>
+   just schedule-v3-ics26router-upgrade-params <schedule_safe_nonce_2>
+   just schedule-escrow-upgrade-params <schedule_safe_nonce_3>
+   just schedule-ibcerc20-upgrade-params <schedule_safe_nonce_4>
    ```
 
    The `ICS20Transfer` and `ICS26Router` calls must show `upgradeToAndCall(newImplementation, initializeV2(accessManager))`.
 
+   Get the starting Safe nonce from `just get_safe_nonce` or the Safe UI. Use a different Safe nonce for each Safe transaction. For example, if the current nonce is `N`, use `N`, `N+1`, `N+2`, and `N+3` for the four schedule transactions.
+
    Schedule each SP1 migration while the same timelock window is open:
 
    ```bash
-   just schedule-v3-light-client-migration-params <client_id> <schedule_safe_nonce>
+   just schedule-v3-light-client-migration-params <client_id> <schedule_safe_nonce_n>
    ```
 
    Run this once per upgraded client. This is a calldata-only generator, so it can schedule the v3 `migrateClient(clientId, counterpartyInfo, newImplementation)` call before the `ICS26Router` proxy has been upgraded. Use a unique Safe nonce for every schedule transaction.
@@ -130,16 +132,16 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 7. After the timelock delay, execute the core upgrades first.
 
    ```bash
-   just execute-v3-ics20transfer-upgrade-params <execute_safe_nonce>
-   just execute-v3-ics26router-upgrade-params <execute_safe_nonce>
-   just execute-escrow-upgrade-params <execute_safe_nonce>
-   just execute-ibcerc20-upgrade-params <execute_safe_nonce>
+   just execute-v3-ics20transfer-upgrade-params <execute_safe_nonce_1>
+   just execute-v3-ics26router-upgrade-params <execute_safe_nonce_2>
+   just execute-escrow-upgrade-params <execute_safe_nonce_3>
+   just execute-ibcerc20-upgrade-params <execute_safe_nonce_4>
    ```
 
 8. Execute each SP1 light-client migration immediately after the core upgrades succeed.
 
    ```bash
-   just execute-v3-light-client-migration-params <client_id> <execute_safe_nonce>
+   just execute-v3-light-client-migration-params <client_id> <execute_safe_nonce_n>
    ```
 
    Run this once per upgraded client with the same client ID used during scheduling. The migration can be scheduled in parallel with the core upgrade, but execute it after the `ICS26Router` v3 upgrade so the final state is v3 core plus SP1 v6.1 light clients.
@@ -150,6 +152,12 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
     ```bash
     just initialize-escrow-v2-params <client_id>
+    ```
+
+    To print initialization params for every known deployment JSON client ID that currently has a nonzero escrow address, use:
+
+    ```bash
+    just initialize-known-escrows-v2-params
     ```
 
     Submit the printed `to` and `data` as a normal transaction. This does not need to go through the timelock unless the operation policy requires it.
@@ -168,3 +176,5 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
     ```
 
     Known delegate sender integrations should be in `.ics20Transfer.delegateSenders` before step 2 so they do not lose access during the `ICS20Transfer` upgrade.
+
+IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Prefer custom ERC20s through the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.

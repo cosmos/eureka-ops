@@ -44,6 +44,7 @@ shadow-deploy-light-client chain shadow_env port client_id="":
         export CLIENT_ID="{{client_id}}"
     fi
     export SP1_DEPLOY_COPY=true
+    export SP1_CAN_DEPLOY_VERIFIER=true
     export DEPLOYMENT_ENV="{{shadow_env}}"
     export EUREKA_ENVIRONMENT="{{shadow_env}}"
     export EUREKA_CHAIN="{{chain}}"

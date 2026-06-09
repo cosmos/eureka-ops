@@ -66,6 +66,7 @@ cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$admin" "$balance" >/dev/null
 (
   cd "$root"
   export DEPLOYMENT_ENV="$shadow_env"
+  export SP1_CAN_DEPLOY_VERIFIER=true
   export EUREKA_ENVIRONMENT="$shadow_env"
   export EUREKA_CHAIN="$chain_id"
   export ETH_RPC="$fork_rpc"

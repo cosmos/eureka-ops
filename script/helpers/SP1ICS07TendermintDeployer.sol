@@ -12,7 +12,10 @@ import { SP1MockVerifier } from "@sp1-contracts/SP1MockVerifier.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 
 abstract contract SP1ICS07TendermintDeployer is Deployments {
-    function deploySP1ICS07Tendermint(SP1ICS07TendermintDeployment memory deployment)
+    function deploySP1ICS07Tendermint(
+        SP1ICS07TendermintDeployment memory deployment,
+        bool canDeployVerifier
+    )
         internal
         returns (SP1ICS07Tendermint)
     {
@@ -22,6 +25,9 @@ abstract contract SP1ICS07TendermintDeployer is Deployments {
         address verifier = address(0);
 
         if (keccak256(bytes(deployment.verifier)) == keccak256(bytes("mock"))) {
+            if (!canDeployVerifier) {
+                revert("Mock SP1 verifier only allowed for local/shadow deployments");
+            }
             verifier = address(new SP1MockVerifier());
         } else if (bytes(deployment.verifier).length > 0) {
             (bool success, address verifierAddr) = Strings.tryParseAddress(deployment.verifier);
@@ -32,6 +38,8 @@ abstract contract SP1ICS07TendermintDeployer is Deployments {
             }
 
             verifier = verifierAddr;
+        } else if (!canDeployVerifier) {
+            revert("SP1 verifier address required for non-local deployments");
         } else if (trustedClientState.zkAlgorithm == IICS07TendermintMsgs.SupportedZkAlgorithm.Plonk) {
             verifier = address(new SP1VerifierPlonk());
         } else if (trustedClientState.zkAlgorithm == IICS07TendermintMsgs.SupportedZkAlgorithm.Groth16) {
