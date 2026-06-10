@@ -22,7 +22,7 @@ grpcurl_flags := env_var_or_default("GRPCURL_FLAGS", "-plaintext")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 _wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
-_timelock_controller := shell('if [ -n "$1" ] && [ -n "$2" ] && [ -f "deployments/$1/$2.json" ]; then jq -r ".ics26Router.timelockAdmin" "deployments/$1/$2.json"; else echo "0x0000000000000000000000000000000000000000"; fi', environment, chain)
+_timelock_controller := shell('if [ -n "$1" ] && [ -n "$2" ] && [ -f "deployments/$1/$2.json" ]; then jq -r "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)" "deployments/$1/$2.json"; else echo "0x0000000000000000000000000000000000000000"; fi', environment, chain)
 
 _verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
@@ -45,7 +45,7 @@ info-env:
     echo
     echo "Deployment Settings:"
     echo "IBC Solidity Contracts Version: ${solidity_ver}"
-    echo "TimeLock Controller: {{_timelock_controller}}"
+    echo "AccessManager admin: {{_timelock_controller}}"
     echo "Broadcast Flags: {{_broadcast_flags}}" | sed -e "s/{{private_key}}/***REDACTED***/g"
     echo "Timelock Flags: {{_timelock_flags}}"
 
@@ -55,7 +55,7 @@ info-admin: _generate-script-helper
     set -eou pipefail
     is_timelock=$(jq -r ".settings.admin_is_timelock_controller" out/scriptHelper.json)
     echo "Admin Information for {{environment}} on {{chain}}:"
-    echo "Admin address (ics26Router.timelockAdmin): {{_timelock_controller}}"
+    echo "AccessManager admin address: {{_timelock_controller}}"
     echo "Admin is Timelock Controller script: $is_timelock"
 
 [group('info')]
@@ -225,6 +225,12 @@ deploy-light-client: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv {{_broadcast_flags}}
+
+[group('deploy')]
+register-ics27-gmp: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/RegisterICS27GMP.sol:RegisterICS27GMP -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
 deploy-update-light-client-state:

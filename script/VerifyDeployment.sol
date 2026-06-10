@@ -8,11 +8,13 @@ import { Deployments } from "./helpers/Deployments.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { ICS20Lib } from "solidity-ibc-eureka/contracts/utils/ICS20Lib.sol";
+import { ICS27Lib } from "solidity-ibc-eureka/contracts/utils/ICS27Lib.sol";
 import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 import { IAccessManaged } from "@openzeppelin-contracts/access/manager/IAccessManaged.sol";
 import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { IBeacon } from "@openzeppelin-contracts/proxy/beacon/IBeacon.sol";
 import { IICS26Router } from "solidity-ibc-eureka/contracts/interfaces/IICS26Router.sol";
+import { IICS27GMP } from "solidity-ibc-eureka/contracts/interfaces/IICS27GMP.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {
@@ -62,22 +64,16 @@ abstract contract DeploymentVerifier is Deployments, Script {
             accessManager, address(routerProxy), IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE
         );
         _assertTargetRoles(accessManager, address(routerProxy), _ics26MigrationRoleSelectors(), IBCRolesLib.ADMIN_ROLE);
-        _assertRole(accessManager, IBCRolesLib.ADMIN_ROLE, deployment.timelockAdmin, "timelock admin");
+        _assertRole(accessManager, IBCRolesLib.ADMIN_ROLE, accessManagerDeployment.admin, "timelock admin");
 
-        if (deployment.portCustomizer != address(0)) {
-            _assertRole(accessManager, IBCRolesLib.ID_CUSTOMIZER_ROLE, deployment.portCustomizer, "portCustomizer");
-        }
-
-        if (deployment.clientIdCustomizer != address(0) && deployment.clientIdCustomizer != deployment.portCustomizer) {
+        for (uint32 i = 0; i < accessManagerDeployment.idCustomizers.length; i++) {
             _assertRole(
-                accessManager, IBCRolesLib.ID_CUSTOMIZER_ROLE, deployment.clientIdCustomizer, "clientIdCustomizer"
+                accessManager, IBCRolesLib.ID_CUSTOMIZER_ROLE, accessManagerDeployment.idCustomizers[i], "idCustomizer"
             );
         }
 
-        if (deployment.relayers.length != 0) {
-            for (uint32 i = 0; i < deployment.relayers.length; i++) {
-                _assertRole(accessManager, IBCRolesLib.RELAYER_ROLE, deployment.relayers[i], "relayer");
-            }
+        for (uint32 i = 0; i < accessManagerDeployment.relayers.length; i++) {
+            _assertRole(accessManager, IBCRolesLib.RELAYER_ROLE, accessManagerDeployment.relayers[i], "relayer");
         }
     }
 
@@ -148,29 +144,73 @@ abstract contract DeploymentVerifier is Deployments, Script {
             accessManager, address(transferProxy), IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE
         );
 
-        if (deployment.pausers.length != 0) {
-            for (uint32 i = 0; i < deployment.pausers.length; i++) {
-                _assertRole(accessManager, IBCRolesLib.PAUSER_ROLE, deployment.pausers[i], "pauser");
-            }
+        for (uint32 i = 0; i < accessManagerDeployment.pausers.length; i++) {
+            _assertRole(accessManager, IBCRolesLib.PAUSER_ROLE, accessManagerDeployment.pausers[i], "pauser");
         }
 
-        if (deployment.unpausers.length != 0) {
-            for (uint32 i = 0; i < deployment.unpausers.length; i++) {
-                _assertRole(accessManager, IBCRolesLib.UNPAUSER_ROLE, deployment.unpausers[i], "unpauser");
-            }
+        for (uint32 i = 0; i < accessManagerDeployment.unpausers.length; i++) {
+            _assertRole(accessManager, IBCRolesLib.UNPAUSER_ROLE, accessManagerDeployment.unpausers[i], "unpauser");
         }
 
-        if (deployment.delegateSenders.length != 0) {
-            for (uint32 i = 0; i < deployment.delegateSenders.length; i++) {
-                _assertRole(
-                    accessManager, IBCRolesLib.DELEGATE_SENDER_ROLE, deployment.delegateSenders[i], "delegateSender"
-                );
-            }
+        for (uint32 i = 0; i < accessManagerDeployment.delegateSenders.length; i++) {
+            _assertRole(
+                accessManager,
+                IBCRolesLib.DELEGATE_SENDER_ROLE,
+                accessManagerDeployment.delegateSenders[i],
+                "delegateSender"
+            );
         }
 
-        if (deployment.tokenOperator != address(0)) {
-            _assertRole(accessManager, IBCRolesLib.ERC20_CUSTOMIZER_ROLE, deployment.tokenOperator, "tokenOperator");
+        for (uint32 i = 0; i < accessManagerDeployment.erc20Customizers.length; i++) {
+            _assertRole(
+                accessManager,
+                IBCRolesLib.ERC20_CUSTOMIZER_ROLE,
+                accessManagerDeployment.erc20Customizers[i],
+                "erc20Customizer"
+            );
         }
+    }
+
+    function verifyICS27GMP(
+        ICS27GMPDeployment memory deployment,
+        ProxiedICS26RouterDeployment memory ics26Deployment,
+        AccessManagerDeployment memory accessManagerDeployment
+    )
+        internal
+        view
+    {
+        ERC1967Proxy gmpProxy = ERC1967Proxy(payable(deployment.proxy));
+        IAccessManager accessManager = IAccessManager(accessManagerDeployment.accessManager);
+        IICS27GMP ics27Gmp = IICS27GMP(deployment.proxy);
+        IICS26Router ics26Router = IICS26Router(ics26Deployment.proxy);
+
+        vm.assertNotEq(deployment.proxy, address(0), "ICS27GMP proxy address is zero");
+        vm.assertNotEq(deployment.implementation, address(0), "ICS27GMP implementation address is zero");
+        vm.assertNotEq(deployment.accountImplementation, address(0), "ICS27Account implementation address is zero");
+
+        vm.assertEq(
+            getImplementation(address(gmpProxy)), deployment.implementation, "ICS27GMP implementation doesn't match"
+        );
+        vm.assertEq(
+            IAccessManaged(address(gmpProxy)).authority(),
+            accessManagerDeployment.accessManager,
+            "ICS27GMP authority doesn't match AccessManager"
+        );
+        vm.assertEq(ics27Gmp.ics26(), ics26Deployment.proxy, "ICS27GMP ICS26Router doesn't match");
+        vm.assertEq(
+            IBeacon(ics27Gmp.getAccountBeacon()).implementation(),
+            deployment.accountImplementation,
+            "ICS27Account implementation doesn't match"
+        );
+        vm.assertEq(
+            address(ics26Router.getIBCApp(ICS27Lib.DEFAULT_PORT_ID)),
+            deployment.proxy,
+            "ICS27 app address doesn't match with the one in ICS26Router"
+        );
+
+        _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
+        _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
+        _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
     }
 
     function verifyKnownEscrows(
@@ -304,6 +344,7 @@ contract VerifyDeployment is DeploymentVerifier {
 
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
+        ICS27GMPDeployment memory ics27GmpDeployment = loadICS27GMPDeployment(json);
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
         SP1ICS07TendermintDeployment[] memory ics07Deployments =
             loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
@@ -314,6 +355,8 @@ contract VerifyDeployment is DeploymentVerifier {
         verifyICS26Router(ics26RouterDeployment, accessManagerDeployment);
         console.log("Verifying ICS20Transfer...");
         verifyICS20Transfer(ics20TransferDeployment, accessManagerDeployment);
+        console.log("Verifying ICS27GMP...");
+        verifyICS27GMP(ics27GmpDeployment, ics26RouterDeployment, accessManagerDeployment);
         console.log("Verifying known escrows...");
         verifyKnownEscrows(ics20TransferDeployment, accessManagerDeployment, ics07Deployments);
 

@@ -36,6 +36,40 @@
     ]
   },
   "accessManager": "0x0000000000000000000000000000000000000000",
+  "accessManagerRoles": {
+    "admin": "0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614",
+    "relayers": [
+      "0xC4C09A23dDBd1fF0f313885265113F83622284C2",
+      "0xACf94C35456413F9F1FCe1aE8A0412Dd6D6B40D7",
+      "0x4bc16fEC05B2D9Fa72AdE54BB25A464a20D0D49b",
+      "0xeB128b9893aDCf2F6C6305160e57b7Beab9A09AF"
+    ],
+    "pausers": [
+      "0x9D91034CF296a02ED54C18A1a2AB9520e5fC135d",
+      "0xCb5d44d2324D36FfFef0e594d8893c4Fee908d4d",
+      "0x64ACC525DC35ebca8345fDF6e2A70D012a17740A",
+      "0x00A8b36491dCc59f1998fa368842709aBdD24eD7",
+      "0x2FeD70e1Ea7bE86a5C99F3456C0fb70db2801AD2"
+    ],
+    "unpausers": [
+      "0x7B96CD54aA750EF83ca90eA487e0bA321707559a"
+    ],
+    "delegateSenders": [
+      "0xfc2d0487A0ae42aE7329a80dc269916a9184CF7c",
+      "0x47a4b9F949E98a49Be500753c19a8f9c9d6b7689"
+    ],
+    "idCustomizers": [
+      "0x4b46ea82D80825CA5640301f47C035942e6D9A46"
+    ],
+    "erc20Customizers": [
+      "0x4b46ea82D80825CA5640301f47C035942e6D9A46"
+    ]
+  },
+  "ics27Gmp": {
+    "implementation": "0x0000000000000000000000000000000000000000",
+    "accountImplementation": "0x0000000000000000000000000000000000000000",
+    "proxy": "0x0000000000000000000000000000000000000000"
+  },
   "light_clients": {
     "0": {
       "clientId": "cosmoshub-0",

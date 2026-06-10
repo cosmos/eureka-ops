@@ -56,7 +56,7 @@ else
   cp "$source_file" "$shadow_file"
 fi
 
-admin="$(jq -re '.ics26Router.timelockAdmin' "$shadow_file")"
+admin="$(jq -re '(.accessManagerRoles.admin // .ics26Router.timelockAdmin)' "$shadow_file")"
 deployer="${SHADOW_FORK_DEPLOYER:-0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266}"
 balance="${SHADOW_FORK_BALANCE_WEI:-0x56BC75E2D63100000}"
 

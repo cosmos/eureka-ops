@@ -11,10 +11,12 @@ import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { IICS02Client } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
 import { IICS02ClientMsgs } from "solidity-ibc-eureka/contracts/msgs/IICS02ClientMsgs.sol";
 import { IICS20TransferAccessControlled } from "solidity-ibc-eureka/contracts/interfaces/IICS20Transfer.sol";
+import { IICS26Router } from "solidity-ibc-eureka/contracts/interfaces/IICS26Router.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/SP1ICS07Tendermint.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol";
 import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
+import { ICS27Lib } from "solidity-ibc-eureka/contracts/utils/ICS27Lib.sol";
 import { V3AccessManagerBootstrap } from "./DeployV3AccessManager.sol";
 import { DeploymentVerifier } from "./VerifyDeployment.sol";
 import { SP1ICS07TendermintDeployer } from "./helpers/SP1ICS07TendermintDeployer.sol";
@@ -30,22 +32,30 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
         ProxiedICS26RouterDeployment memory ics26 = loadProxiedICS26RouterDeployment(vm, json);
         ProxiedICS20TransferDeployment memory ics20 = loadProxiedICS20TransferDeployment(vm, json);
+        ICS27GMPDeployment memory ics27 = loadICS27GMPDeployment(json);
         SP1ICS07TendermintDeployment[] memory ics07Deployments =
             loadSP1ICS07TendermintDeployments(vm, json, ics26.proxy);
         string[] memory sp1ClientIds = vm.envOr("SP1_CLIENT_IDS", ",", new string[](0));
         bool canDeployVerifier = _canDeployVerifier(deployEnv);
 
         vm.assertEq(accessManagerDeployment.accessManager, address(0), "deployment JSON already has accessManager");
+        vm.assertNotEq(accessManagerDeployment.admin, address(0), "timelock admin must be set");
         vm.assertNotEq(ics26.proxy, address(0), "ICS26Router proxy must be set");
         vm.assertNotEq(ics20.proxy, address(0), "ICS20Transfer proxy must be set");
-        vm.assertNotEq(ics26.timelockAdmin, address(0), "timelock admin must be set");
+        vm.assertEq(ics27.proxy, address(0), "deployment JSON already has ICS27GMP");
+        vm.assertNotEq(accessManagerDeployment.idCustomizers.length, 0, "ID customizer must be set");
 
         console.log("Using shadow deployment: %s", path);
-        console.log("Impersonating upgrade admin: %s", ics26.timelockAdmin);
+        console.log("Impersonating upgrade admin: %s", accessManagerDeployment.admin);
 
         vm.startBroadcast();
-        V3AccessManagerBootstrap bootstrap = new V3AccessManagerBootstrap(ics26, ics20);
+        V3AccessManagerBootstrap bootstrap = new V3AccessManagerBootstrap(accessManagerDeployment, ics26, ics20);
         accessManagerDeployment.accessManager = bootstrap.accessManager();
+        ics27 = ICS27GMPDeployment({
+            implementation: bootstrap.ics27GmpImplementation(),
+            accountImplementation: bootstrap.ics27AccountImplementation(),
+            proxy: bootstrap.ics27Gmp()
+        });
 
         ics20.implementation = address(new ICS20Transfer());
         ics26.implementation = address(new ICS26Router());
@@ -55,7 +65,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         vm.stopBroadcast();
         _writePlannedLightClients(path, ics07Deployments, sp1ClientIds);
 
-        vm.startBroadcast(ics26.timelockAdmin);
+        vm.startBroadcast(accessManagerDeployment.admin);
         UUPSUpgradeable(ics20.proxy)
             .upgradeToAndCall(
                 ics20.implementation,
@@ -68,6 +78,12 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         IICS20TransferAccessControlled(ics20.proxy).upgradeEscrowTo(ics20.escrowImplementation);
         IICS20TransferAccessControlled(ics20.proxy).upgradeIBCERC20To(ics20.ibcERC20Implementation);
         uint256 sp1Migrations = _migratePlannedLightClients(ics26, ics07Deployments);
+        vm.stopBroadcast();
+
+        address idCustomizer = accessManagerDeployment.idCustomizers[0];
+        vm.deal(idCustomizer, 1 ether);
+        vm.startBroadcast(idCustomizer);
+        IICS26Router(ics26.proxy).addIBCApp(ICS27Lib.DEFAULT_PORT_ID, ics27.proxy);
         vm.stopBroadcast();
 
         uint256 expectedSp1Deployments = _nonEmptyStringCount(sp1ClientIds);
@@ -87,12 +103,13 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         console.log("Verifying upgraded shadow deployment...");
         verifyICS26Router(ics26, accessManagerDeployment);
         verifyICS20Transfer(ics20, accessManagerDeployment);
+        verifyICS27GMP(ics27, ics26, accessManagerDeployment);
         verifyKnownEscrows(ics20, accessManagerDeployment, ics07Deployments);
         for (uint256 i = 0; i < ics07Deployments.length; ++i) {
             verifyICS07Tendermint(ics07Deployments[i], ics26);
         }
 
-        _writeDeployment(path, accessManagerDeployment, ics26, ics20);
+        _writeDeployment(path, accessManagerDeployment, ics26, ics20, ics27);
 
         console.log("Shadow v2-to-v3 upgrade succeeded.");
         console.log("AccessManager: %s", accessManagerDeployment.accessManager);
@@ -100,6 +117,9 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         console.log("ICS26Router implementation: %s", ics26.implementation);
         console.log("Escrow implementation: %s", ics20.escrowImplementation);
         console.log("IBCERC20 implementation: %s", ics20.ibcERC20Implementation);
+        console.log("ICS27GMP implementation: %s", ics27.implementation);
+        console.log("ICS27Account implementation: %s", ics27.accountImplementation);
+        console.log("ICS27GMP proxy: %s", ics27.proxy);
         console.log("SP1 light-client deployments: %s", sp1Deployments);
         console.log("SP1 light-client migrations: %s", sp1Migrations);
     }
@@ -244,14 +264,21 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         string memory path,
         AccessManagerDeployment memory accessManagerDeployment,
         ProxiedICS26RouterDeployment memory ics26,
-        ProxiedICS20TransferDeployment memory ics20
+        ProxiedICS20TransferDeployment memory ics20,
+        ICS27GMPDeployment memory ics27
     )
         private
     {
         vm.writeJson(vm.toString(accessManagerDeployment.accessManager), path, ".accessManager");
+        _writeAccessManagerRoles(vm, path, accessManagerDeployment);
         vm.writeJson(vm.toString(ics26.implementation), path, ".ics26Router.implementation");
+        vm.writeJson(vm.toString(accessManagerDeployment.admin), path, ".ics26Router.timelockAdmin");
         vm.writeJson(vm.toString(ics20.implementation), path, ".ics20Transfer.implementation");
         vm.writeJson(vm.toString(ics20.escrowImplementation), path, ".ics20Transfer.escrowImplementation");
         vm.writeJson(vm.toString(ics20.ibcERC20Implementation), path, ".ics20Transfer.ibcERC20Implementation");
+        vm.serializeAddress("ics27Gmp", "proxy", ics27.proxy);
+        vm.serializeAddress("ics27Gmp", "implementation", ics27.implementation);
+        string memory ics27Json = vm.serializeAddress("ics27Gmp", "accountImplementation", ics27.accountImplementation);
+        vm.writeJson(ics27Json, path, ".ics27Gmp");
     }
 }

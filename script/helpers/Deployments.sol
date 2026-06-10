@@ -9,13 +9,98 @@ abstract contract Deployments {
 
     string internal constant DEPLOYMENT_DIR = "/deployments/";
 
-    // Role members are tracked on the proxy deployment structs that own those roles.
     struct AccessManagerDeployment {
         address accessManager;
+        address admin;
+        address[] relayers;
+        address[] pausers;
+        address[] unpausers;
+        address[] delegateSenders;
+        address[] idCustomizers;
+        address[] erc20Customizers;
     }
 
     function loadAccessManagerDeployment(string memory json) public view returns (AccessManagerDeployment memory) {
-        return AccessManagerDeployment({ accessManager: json.readAddressOr(".accessManager", address(0)) });
+        address[] memory empty = new address[](0);
+        address[] memory idCustomizers = json.keyExists(".accessManagerRoles.idCustomizers")
+            ? json.readAddressArrayOr(".accessManagerRoles.idCustomizers", empty)
+            : _legacyIdCustomizers(json);
+        address[] memory erc20Customizers = json.keyExists(".accessManagerRoles.erc20Customizers")
+            ? json.readAddressArrayOr(".accessManagerRoles.erc20Customizers", empty)
+            : _singleNonZero(json.readAddressOr(".ics20Transfer.tokenOperator", address(0)));
+
+        return AccessManagerDeployment({
+            accessManager: json.readAddressOr(".accessManager", address(0)),
+            admin: json.readAddressOr(
+                ".accessManagerRoles.admin", json.readAddressOr(".ics26Router.timelockAdmin", address(0))
+            ),
+            relayers: json.readAddressArrayOr(
+                ".accessManagerRoles.relayers", json.readAddressArrayOr(".ics26Router.relayers", empty)
+            ),
+            pausers: json.readAddressArrayOr(
+                ".accessManagerRoles.pausers", json.readAddressArrayOr(".ics20Transfer.pausers", empty)
+            ),
+            unpausers: json.readAddressArrayOr(
+                ".accessManagerRoles.unpausers", json.readAddressArrayOr(".ics20Transfer.unpausers", empty)
+            ),
+            delegateSenders: json.readAddressArrayOr(
+                ".accessManagerRoles.delegateSenders", json.readAddressArrayOr(".ics20Transfer.delegateSenders", empty)
+            ),
+            idCustomizers: idCustomizers,
+            erc20Customizers: erc20Customizers
+        });
+    }
+
+    function _writeAccessManagerRoles(Vm vm, string memory path, AccessManagerDeployment memory deployment) internal {
+        vm.serializeAddress("accessManagerRoles", "admin", deployment.admin);
+        vm.serializeAddress("accessManagerRoles", "relayers", deployment.relayers);
+        vm.serializeAddress("accessManagerRoles", "pausers", deployment.pausers);
+        vm.serializeAddress("accessManagerRoles", "unpausers", deployment.unpausers);
+        vm.serializeAddress("accessManagerRoles", "delegateSenders", deployment.delegateSenders);
+        vm.serializeAddress("accessManagerRoles", "idCustomizers", deployment.idCustomizers);
+        string memory rolesJson =
+            vm.serializeAddress("accessManagerRoles", "erc20Customizers", deployment.erc20Customizers);
+        vm.writeJson(rolesJson, path, ".accessManagerRoles");
+    }
+
+    function _legacyIdCustomizers(string memory json) private view returns (address[] memory) {
+        address clientIdCustomizer = json.readAddressOr(".ics26Router.clientIdCustomizer", address(0));
+        address portCustomizer = json.readAddressOr(".ics26Router.portCustomizer", address(0));
+
+        if (clientIdCustomizer == address(0)) {
+            return _singleNonZero(portCustomizer);
+        }
+        if (portCustomizer == address(0) || portCustomizer == clientIdCustomizer) {
+            return _singleNonZero(clientIdCustomizer);
+        }
+
+        address[] memory customizers = new address[](2);
+        customizers[0] = clientIdCustomizer;
+        customizers[1] = portCustomizer;
+        return customizers;
+    }
+
+    function _singleNonZero(address value) private pure returns (address[] memory values) {
+        if (value == address(0)) {
+            return new address[](0);
+        }
+
+        values = new address[](1);
+        values[0] = value;
+    }
+
+    struct ICS27GMPDeployment {
+        address implementation;
+        address accountImplementation;
+        address proxy;
+    }
+
+    function loadICS27GMPDeployment(string memory json) public view returns (ICS27GMPDeployment memory) {
+        return ICS27GMPDeployment({
+            implementation: json.readAddressOr(".ics27Gmp.implementation", address(0)),
+            accountImplementation: json.readAddressOr(".ics27Gmp.accountImplementation", address(0)),
+            proxy: json.readAddressOr(".ics27Gmp.proxy", address(0))
+        });
     }
 
     struct SP1ICS07TendermintDeployment {
@@ -41,9 +126,10 @@ abstract contract Deployments {
         string memory key,
         address defaultProofSubmitter
     )
-    public
-    view
-    returns (SP1ICS07TendermintDeployment memory) {
+        public
+        view
+        returns (SP1ICS07TendermintDeployment memory)
+    {
         return SP1ICS07TendermintDeployment({
             clientId: json.readStringOr(string.concat(key, ".clientId"), ""),
             verifier: json.readStringOr(string.concat(key, ".verifier"), ""),
@@ -66,9 +152,9 @@ abstract contract Deployments {
         string memory json,
         address defaultProofSubmitter
     )
-    public
-    view
-    returns (SP1ICS07TendermintDeployment[] memory)
+        public
+        view
+        returns (SP1ICS07TendermintDeployment[] memory)
     {
         string[] memory keys = vm.parseJsonKeys(json, "$.light_clients");
         SP1ICS07TendermintDeployment[] memory deployments = new SP1ICS07TendermintDeployment[](keys.length);
@@ -94,9 +180,9 @@ abstract contract Deployments {
         Vm vm,
         string memory json
     )
-    public
-    pure
-    returns (ProxiedICS26RouterDeployment memory)
+        public
+        pure
+        returns (ProxiedICS26RouterDeployment memory)
     {
         ProxiedICS26RouterDeployment memory fixture = ProxiedICS26RouterDeployment({
             implementation: vm.parseJsonAddress(json, ".ics26Router.implementation"),
@@ -133,9 +219,9 @@ abstract contract Deployments {
         Vm vm,
         string memory json
     )
-    public
-    view
-    returns (ProxiedICS20TransferDeployment memory)
+        public
+        view
+        returns (ProxiedICS20TransferDeployment memory)
     {
         address[] memory defaultDelegateSenders = new address[](0);
 

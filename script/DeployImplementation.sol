@@ -8,7 +8,9 @@ import "forge-std/console.sol";
 import { Deployments } from "./helpers/Deployments.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
+import { ICS27GMP } from "solidity-ibc-eureka/contracts/ICS27GMP.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol";
+import { ICS27Account } from "solidity-ibc-eureka/contracts/utils/ICS27Account.sol";
 import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
@@ -17,7 +19,7 @@ import { ScriptHelperConstants } from "./GenerateScriptHelperJSON.sol";
 contract DeployImplementation is Script, Deployments {
     using Strings for string;
 
-    function run() public returns (address){
+    function run() public returns (address) {
         string memory contractToDeploy = vm.envString("LOGIC_CONTRACT");
 
         address implementation;
@@ -35,8 +37,13 @@ contract DeployImplementation is Script, Deployments {
         } else if (contractToDeploy.equal(ScriptHelperConstants.IBCERC20_NAME)) {
             console.log("Deploying IBCERC20 implementation");
             implementation = address(new IBCERC20());
-        }
-        else {
+        } else if (contractToDeploy.equal(ScriptHelperConstants.ICS27_GMP_NAME)) {
+            console.log("Deploying ICS27GMP implementation");
+            implementation = address(new ICS27GMP());
+        } else if (contractToDeploy.equal(ScriptHelperConstants.ICS27_ACCOUNT_NAME)) {
+            console.log("Deploying ICS27Account implementation");
+            implementation = address(new ICS27Account());
+        } else {
             revert("Unknown contract to deploy");
         }
         vm.stopBroadcast();
@@ -46,4 +53,3 @@ contract DeployImplementation is Script, Deployments {
         return implementation;
     }
 }
-

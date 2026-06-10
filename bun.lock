@@ -5,7 +5,7 @@
     "": {
       "name": "@cosmos/eureka-ops",
       "dependencies": {
-        "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#solidity-v3.0.0",
+        "@cosmos/solidity-ibc-eureka": "github:cosmos/solidity-ibc-eureka#solidity-v3.0.1",
         "@openzeppelin/contracts": "5.6.1",
         "@openzeppelin/contracts-upgradeable": "5.6.1",
       },
@@ -22,7 +22,7 @@
 
     "@babel/helper-validator-identifier": ["@babel/helper-validator-identifier@7.29.7", "", {}, "sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg=="],
 
-    "@cosmos/solidity-ibc-eureka": ["@cosmos/solidity-ibc-eureka@github:cosmos/solidity-ibc-eureka#cff7666", { "dependencies": { "@openzeppelin/contracts": "^5.6.1", "@openzeppelin/contracts-upgradeable": "^5.6.1", "@uniswap/permit2": "github:Uniswap/permit2#cc56ad0f3439c502c246fc5cfcc3db92bb8b7219" } }, "cosmos-solidity-ibc-eureka-cff7666", "sha512-kHLZifbvzwtMe6NKUHfDJKz+ESoDXEggp1JIFa/ZPmY1N+DkwOMphrSY3WMGGXNmI3si6sIH+6U2UtjII/TJGA=="],
+    "@cosmos/solidity-ibc-eureka": ["@cosmos/solidity-ibc-eureka@github:cosmos/solidity-ibc-eureka#04b9767", { "dependencies": { "@openzeppelin/contracts": "^5.6.1", "@openzeppelin/contracts-upgradeable": "^5.6.1", "@uniswap/permit2": "github:Uniswap/permit2#cc56ad0f3439c502c246fc5cfcc3db92bb8b7219" } }, "cosmos-solidity-ibc-eureka-04b9767", "sha512-hyLDJM86+AdifoRBEPiHu9Y9X8EKtG3z3rCa78fdWaQlfjYLBHPuB0zos8JGf+5q1Q7lcmuNq3IMZsLucxbJLQ=="],
 
     "@defi-wonderland/natspec-smells": ["@defi-wonderland/natspec-smells@1.1.6", "", { "dependencies": { "fast-glob": "3.3.2", "solc-typed-ast": "18.2.4", "yargs": "17.7.2" }, "bin": { "natspec-smells": "lib/main.js" } }, "sha512-HTdZLEdBs3UakW0JQZ7vO8pb6YCoU3CPQNfLxa0Z9PWAwmgKhSZJbF8dm/okkJEJGRa0dCoOxviJw5jeK+kDiQ=="],
 

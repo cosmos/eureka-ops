@@ -5,21 +5,19 @@ import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { AccessManager } from "@openzeppelin-contracts/access/manager/AccessManager.sol";
 import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
-
-interface IAccessManagerMulticall {
-    function multicall(bytes[] calldata data) external returns (bytes[] memory results);
-}
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
 contract GrantRateLimiterRole is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         string memory clientId = vm.prompt("Client ID of the escrow address to grant the role to");
@@ -42,7 +40,7 @@ contract GrantRateLimiterRole is Script, Deployments {
 
         vm.startBroadcast();
 
-        IAccessManagerMulticall(accessManagerDeployment.accessManager).multicall(calls);
+        AccessManager(accessManagerDeployment.accessManager).multicall(calls);
 
         vm.stopBroadcast();
     }

@@ -72,9 +72,9 @@ For a new v3 deployment where `accessManager`, `ics26Router`, and `ics20Transfer
 just deploy-v3-core
 ```
 
-This deploys the `AccessManager`, `ICS26Router`, `ICS20Transfer`, `Escrow`, and `IBCERC20` implementations, registers the transfer app on the router, configures the v3 target function roles, grants the configured relayer/pauser/unpauser/delegate-sender/customizer roles, and writes the deployed addresses back to `deployments/<environment>/<chain_id>.json`.
+This deploys the `AccessManager`, `ICS26Router`, `ICS20Transfer`, `ICS27GMP`, `ICS27Account`, `Escrow`, and `IBCERC20` implementations, registers the transfer and GMP apps on the router, configures the v3 target function roles, grants the configured relayer/pauser/unpauser/delegate-sender/customizer roles, and writes the deployed addresses back to `deployments/<environment>/<chain_id>.json`.
 
-The script temporarily uses the broadcast account as the `AccessManager` admin during deployment, then hands admin control to the configured `.ics26Router.timelockAdmin`. The configured admin can be an EOA, Safe, or timelock.
+The script temporarily uses the broadcast account as the `AccessManager` admin during deployment, then hands admin control to the configured `.accessManagerRoles.admin`. The configured admin can be an EOA, Safe, or timelock.
 
 ### Deploy light client implementation for migration/upgrade
 

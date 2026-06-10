@@ -8,6 +8,10 @@ The UUPS upgrades for `ICS20Transfer` and `ICS26Router` must call `initializeV2(
 
 Existing escrow proxies also need `Escrow.initializeV2()` after the escrow beacon has been upgraded. Initialize escrows only after the escrow beacon upgrade has executed. This call can be made by anyone, but it can only run once per escrow.
 
+The upgrade also deploys `ICS27GMP` and `ICS27Account`. `deploy-v3-access-manager` configures ICS27 pauser/unpauser/admin target roles before AccessManager control is handed over. After the router is upgraded, an ID customizer registers the GMP app on `ICS27Lib.DEFAULT_PORT_ID` with `just register-ics27-gmp`.
+
+In v3, `migrateClient` is controlled by the shared AccessManager instead of the v2 per-client migrator role. Customers that need self-owned client migration should use a proxy-style client design.
+
 The SP1 v6.1 change is not picked up by upgrading the core proxies. Existing SP1 light clients are standalone contracts, so each upgraded client needs a new `SP1ICS07Tendermint` deployment and a timelocked `ICS26Router.migrateClient(...)` call. Run this as part of the same operations branch and timelock window as the v2-to-v3 upgrade.
 
 `deploy-light-client` writes the future light-client implementation address into `deployments/<environment>/<chain_id>.json`. During the window between deploying the new SP1 client and executing `migrateClient`, `just verify-deployment` is expected to fail because the deployment JSON points at the new client while the router still maps the client ID to the old implementation. Only run final deployment verification after the migration executes.
@@ -40,7 +44,7 @@ Then, in another terminal:
 just shadow-v2-to-v3-mainnet
 ```
 
-The generic form is `just shadow-v2-to-v3 <chain_id> <source_env> <shadow_env> <port>`, which is useful for non-default environments. The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` environment, deploys the v3 `AccessManager` and implementations, impersonates `.ics26Router.timelockAdmin` on the fork to run the upgrades, initializes known escrows, and runs deployment verification. Restart the Anvil fork before each fresh rehearsal.
+The generic form is `just shadow-v2-to-v3 <chain_id> <source_env> <shadow_env> <port>`, which is useful for non-default environments. The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` environment, deploys the v3 `AccessManager`, ICS27, and implementations, impersonates `.accessManagerRoles.admin` on the fork to run the upgrades, registers ICS27 through an ID customizer, initializes known escrows, and runs deployment verification. Restart the Anvil fork before each fresh rehearsal.
 
 The plain `shadow-v2-to-v3-*` recipes are a core v2-to-v3 rehearsal. For a proper combined v2-to-v3 plus SP1 rehearsal, preserve a prepared shadow deployment JSON:
 
@@ -78,7 +82,7 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
    Before running this, make sure `.ics20Transfer.delegateSenders` contains every existing delegate sender integration that must keep working after the authority switch.
 
-   The script writes `.accessManager` into `deployments/<environment>/<chain_id>.json`. It grants the current `.ics26Router.timelockAdmin` the `ADMIN_ROLE`, configures target function roles for the existing `ICS26Router` and `ICS20Transfer` proxies, and copies the current relayer, pauser, unpauser, delegate sender, ID customizer, and ERC20 customizer accounts from the deployment JSON.
+   The script writes `.accessManager`, `.accessManagerRoles`, and `.ics27Gmp` into `deployments/<environment>/<chain_id>.json`. It grants `.accessManagerRoles.admin` the `ADMIN_ROLE`, configures target function roles for the existing `ICS26Router` and `ICS20Transfer` proxies plus the new `ICS27GMP` proxy, and copies the current relayer, pauser, unpauser, delegate sender, ID customizer, and ERC20 customizer accounts from the deployment JSON.
 
 3. Facilitator deploys the four v3 implementations with `just deploy-implementation`, selecting each contract:
 
@@ -146,7 +150,15 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
    Run this once per upgraded client with the same client ID used during scheduling. The migration can be scheduled in parallel with the core upgrade, but execute it after the `ICS26Router` v3 upgrade so the final state is v3 core plus SP1 v6.1 light clients.
 
-9. Facilitator initializes every existing escrow proxy.
+9. An ID customizer registers the deployed `ICS27GMP` app.
+
+   ```bash
+   just register-ics27-gmp
+   ```
+
+   This must run after the `ICS26Router` v3 upgrade because `addIBCApp` is now controlled by the AccessManager `ID_CUSTOMIZER_ROLE`.
+
+10. Facilitator initializes every existing escrow proxy.
 
     Use the known client IDs from `deployments/<environment>/<chain_id>.json` and any client IDs that have escrow state on-chain.
 
@@ -162,13 +174,13 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
     Submit the printed `to` and `data` as a normal transaction. This does not need to go through the timelock unless the operation policy requires it.
 
-10. Facilitator verifies the deployment.
+11. Facilitator verifies the deployment.
 
     ```bash
     just verify-deployment
     ```
 
-11. If any account needs roles that are not represented in the current deployment JSON, grant them through the `AccessManager` after the upgrade.
+12. If any account needs roles that are not represented in the current deployment JSON, grant them through the `AccessManager` after the upgrade.
 
     ```bash
     just timelock-grant-role schedule

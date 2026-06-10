@@ -2,7 +2,7 @@ _schedule-erc1967-upgrade-params type: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
   calldata=$(cast calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation 0x)
@@ -22,7 +22,7 @@ _execute-erc1967-upgrade-params nonce type: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   newImplementation=$(echo $deployment | jq -re ".{{type}}.implementation")
   proxy=$(echo $deployment | jq -re ".{{type}}.proxy")
   calldata=$({{cast_binary}} calldata "{{UPGRADE_TO_AND_CALL_SIG}}" $newImplementation 0x)
@@ -40,7 +40,7 @@ _schedule-v3-erc1967-upgrade-params nonce type: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   accessManager=$(echo $deployment | jq -re ".accessManager")
   if [ "$accessManager" = "{{zero_address}}" ]; then
     echo "AccessManager is not set in deployments/{{environment}}/{{chain}}.json. Run deploy-v3-access-manager before generating v3 upgrade params."
@@ -69,7 +69,7 @@ _execute-v3-erc1967-upgrade-params nonce type: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   accessManager=$(echo $deployment | jq -re ".accessManager")
   if [ "$accessManager" = "{{zero_address}}" ]; then
     echo "AccessManager is not set in deployments/{{environment}}/{{chain}}.json. Run deploy-v3-access-manager before generating v3 upgrade params."
@@ -96,7 +96,7 @@ _schedule-beacon-upgrade-params nonce sig type:
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   newImplementation=$(echo $deployment | jq -re ".ics20Transfer.{{type}}Implementation")
   proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
   calldata=$({{cast_binary}} calldata "{{sig}}" $newImplementation)
@@ -119,7 +119,7 @@ _execute-beacon-upgrade-params nonce sig type:
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo $deployment | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo $deployment | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   newImplementation=$(echo $deployment | jq -re ".ics20Transfer.{{type}}Implementation")
   proxy=$(echo $deployment | jq -re ".ics20Transfer.proxy")
   calldata=$({{cast_binary}} calldata "{{sig}}" $newImplementation)
@@ -166,7 +166,7 @@ _schedule-v3-light-client-migration-params client_id nonce: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo "$deployment" | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo "$deployment" | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   proxy=$(echo "$deployment" | jq -re ".ics26Router.proxy")
   calldata=$({{just}} _v3-light-client-migration-calldata "{{client_id}}")
   minDelay=$({{cast_binary}} call $timelockAdmin "{{GET_MIN_DELAY_SIG}}")
@@ -188,7 +188,7 @@ _execute-v3-light-client-migration-params client_id nonce: info-env
   #!/bin/bash
   set -euo pipefail
   deployment=$(cat deployments/{{environment}}/{{chain}}.json)
-  timelockAdmin=$(echo "$deployment" | jq -re ".ics26Router.timelockAdmin")
+  timelockAdmin=$(echo "$deployment" | jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)")
   proxy=$(echo "$deployment" | jq -re ".ics26Router.proxy")
   calldata=$({{just}} _v3-light-client-migration-calldata "{{client_id}}")
 
