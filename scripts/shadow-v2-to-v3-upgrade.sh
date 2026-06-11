@@ -57,11 +57,14 @@ else
 fi
 
 admin="$(jq -re '(.accessManagerRoles.admin // .ics26Router.timelockAdmin)' "$shadow_file")"
+# The upgrade script broadcasts addIBCApp from the first ID customizer, so it needs gas money too.
+id_customizer="$(jq -re '(.accessManagerRoles.idCustomizers[0] // .ics26Router.clientIdCustomizer // .ics26Router.portCustomizer)' "$shadow_file")"
 deployer="${SHADOW_FORK_DEPLOYER:-0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266}"
 balance="${SHADOW_FORK_BALANCE_WEI:-0x56BC75E2D63100000}"
 
 cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$deployer" "$balance" >/dev/null
 cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$admin" "$balance" >/dev/null
+cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$id_customizer" "$balance" >/dev/null
 
 (
   cd "$root"

@@ -199,7 +199,9 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
 
             uint256 deploymentIndex = _findLightClientDeployment(ics07Deployments, clientIds[i]);
             string memory idx = Strings.toString(deploymentIndex);
-            string memory key = string.concat(".light_clients['", idx, "']");
+            // NOTE: vm.writeJson only resolves dot-path segments; bracket syntax (".light_clients['0']")
+            // is NOT parsed and instead creates a junk top-level key. Use dot notation for the object key.
+            string memory key = string.concat(".light_clients.", idx);
 
             vm.writeJson(
                 vm.toString(ics07Deployments[deploymentIndex].implementation),
