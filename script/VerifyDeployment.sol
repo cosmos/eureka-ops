@@ -211,6 +211,7 @@ abstract contract DeploymentVerifier is Deployments, Script {
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
+        _assertTargetRoles(accessManager, deployment.proxy, _ics27BeaconRoleSelectors(), IBCRolesLib.ADMIN_ROLE);
     }
 
     function verifyKnownEscrows(
@@ -257,6 +258,12 @@ abstract contract DeploymentVerifier is Deployments, Script {
         bytes4[] memory migrationSelectors = new bytes4[](1);
         migrationSelectors[0] = IICS02ClientAccessControlled.migrateClient.selector;
         return migrationSelectors;
+    }
+
+    function _ics27BeaconRoleSelectors() internal pure returns (bytes4[] memory) {
+        bytes4[] memory beaconSelectors = new bytes4[](1);
+        beaconSelectors[0] = IICS27GMP.upgradeAccountTo.selector;
+        return beaconSelectors;
     }
 
     function _assertRole(

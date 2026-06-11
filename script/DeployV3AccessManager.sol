@@ -13,7 +13,11 @@ import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol
 import { ICS27GMP } from "solidity-ibc-eureka/contracts/ICS27GMP.sol";
 import { ICS27Account } from "solidity-ibc-eureka/contracts/utils/ICS27Account.sol";
 import { IICS02ClientAccessControlled } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
+import { IICS27GMP } from "solidity-ibc-eureka/contracts/interfaces/IICS27GMP.sol";
 
+/// @notice Shared AccessManager wiring for the v3 IBC contracts.
+/// @dev Mixed into both the bootstrap below and other scripts (e.g. DeployV3Core, shadow rehearsals) so that
+/// every flow configures the same target function roles and role grants on a manager it currently administers.
 abstract contract V3AccessManagerConfigurator {
     function _setTargetRoles(IAccessManager manager, address ics26, address ics20, address ics27) internal {
         manager.setTargetFunctionRole(ics26, IBCRolesLib.ics26IdCustomizerSelectors(), IBCRolesLib.ID_CUSTOMIZER_ROLE);
@@ -29,6 +33,15 @@ abstract contract V3AccessManagerConfigurator {
         manager.setTargetFunctionRole(ics27, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
         manager.setTargetFunctionRole(ics27, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
         manager.setTargetFunctionRole(ics27, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
+        manager.setTargetFunctionRole(ics27, _ics27BeaconSelectors(), IBCRolesLib.ADMIN_ROLE);
+    }
+
+    // IBCRolesLib.beaconUpgradeSelectors() only covers the ICS20 beacons; the ICS27 account beacon upgrade
+    // selector lives here until it is added to IBCRolesLib upstream (cosmos/solidity-ibc-eureka#1046).
+    function _ics27BeaconSelectors() internal pure returns (bytes4[] memory) {
+        bytes4[] memory beaconSelectors = new bytes4[](1);
+        beaconSelectors[0] = IICS27GMP.upgradeAccountTo.selector;
+        return beaconSelectors;
     }
 
     function _ics26MigrationSelectors() internal pure returns (bytes4[] memory) {
@@ -59,6 +72,13 @@ abstract contract V3AccessManagerConfigurator {
     }
 }
 
+/// @notice Deploys and fully configures the v3 AccessManager plus the new ICS27GMP stack in one transaction.
+/// @dev The constructor makes this contract the initial AccessManager admin so it can configure target function
+/// roles and role grants permissionlessly, including for the freshly deployed ICS27GMP proxy. ICS27 is deployed
+/// here (and not in a separate script) because its restrictions can only be wired up before this contract hands
+/// `ADMIN_ROLE` to the timelock admin and renounces; doing it later would require timelocked admin operations.
+/// The resulting addresses are exposed as immutables because everything happens inside the constructor — they
+/// are read back by the deploy script to record the deployment JSON.
 contract V3AccessManagerBootstrap is V3AccessManagerConfigurator {
     address public immutable accessManager;
     address public immutable ics27GmpImplementation;
@@ -95,6 +115,8 @@ contract V3AccessManagerBootstrap is V3AccessManagerConfigurator {
     }
 }
 
+/// @notice Step 2 of the v2-to-v3 upgrade: deploys the AccessManager and ICS27GMP stack via
+/// V3AccessManagerBootstrap and records the addresses and role holders in the deployment JSON.
 contract DeployV3AccessManager is Script, Deployments {
     function run() public returns (address) {
         string memory root = vm.projectRoot();
@@ -113,6 +135,11 @@ contract DeployV3AccessManager is Script, Deployments {
         vm.assertNotEq(ics26.proxy, address(0), "ICS26Router proxy must be set");
         vm.assertNotEq(ics20.proxy, address(0), "ICS20Transfer proxy must be set");
         vm.assertEq(ics27.proxy, address(0), "ICS27GMP proxy already set in deployment JSON");
+        vm.assertEq(
+            accessManagerDeployment.admin,
+            ics26.timelockAdmin,
+            "accessManagerRoles.admin must match ics26Router.timelockAdmin"
+        );
 
         vm.startBroadcast();
         V3AccessManagerBootstrap bootstrap = new V3AccessManagerBootstrap(accessManagerDeployment, ics26, ics20);

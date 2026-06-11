@@ -56,23 +56,12 @@ jobs:
         uses: actions/checkout@v4
       - name: "Set up environment"
         uses: ./.github/setup
-      - name: Prepare verification
+      - name: Export the RPC URL
         env:
           MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
           SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
         run: |
           set -euo pipefail
-
-          deployment="deployments/${{ matrix.env }}/${{ matrix.file }}"
-          if ! access_manager=$(jq -er '.accessManager | strings' "$deployment"); then
-            echo "::error file=$deployment::accessManager must be present before deployment verification."
-            exit 1
-          fi
-
-          if [ "$access_manager" = "0x0000000000000000000000000000000000000000" ]; then
-            echo "::error file=$deployment::accessManager must not be the zero address."
-            exit 1
-          fi
 
           # The chain id is the deployment file name: deployments/<env>/<chain_id>.json
           chain_id="$(basename "${{ matrix.file }}" .json)"

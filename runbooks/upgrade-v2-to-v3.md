@@ -4,9 +4,11 @@
 
 The v3 upgrade changes contract authorization from per-contract `AccessControl` roles to a shared OpenZeppelin `AccessManager`.
 
-The UUPS upgrades for `ICS20Transfer` and `ICS26Router` must call `initializeV2(address accessManager)` during `upgradeToAndCall`. The order matters: upgrade `ICS20Transfer` first, then `ICS26Router`, then the `Escrow` and `IBCERC20` beacon implementations.
+The UUPS upgrades for `ICS20Transfer` and `ICS26Router` must call `initializeV2(address accessManager)` during `upgradeToAndCall`. The order matters: upgrade `ICS20Transfer` first, then `ICS26Router`, then the `Escrow` and `IBCERC20` beacon implementations. The ordering is not arbitrary: `ICS20Transfer.initializeV2` authenticates its caller against the deprecated v2 admin records still stored on `ICS26Router`, and `ICS26Router.initializeV2` deletes exactly those records, so upgrading the router first would make the `ICS20Transfer` upgrade revert.
 
 Existing escrow proxies also need `Escrow.initializeV2()` after the escrow beacon has been upgraded. Initialize escrows only after the escrow beacon upgrade has executed. This call can be made by anyone, but it can only run once per escrow.
+
+The core upgrades execute as separate timelocked transactions, so the system passes through mixed v2/v3 states (for example `ICS20Transfer` on v3 while `ICS26Router` is still v2, or escrow beacons upgraded before the escrows are initialized). Halt packet relaying before executing the first core upgrade and resume it only after `just verify-deployment` passes.
 
 The upgrade also deploys `ICS27GMP` and `ICS27Account`. `deploy-v3-access-manager` configures ICS27 pauser/unpauser/admin target roles before AccessManager control is handed over. After the router is upgraded, an ID customizer registers the GMP app on `ICS27Lib.DEFAULT_PORT_ID` with `just register-ics27-gmp`.
 
@@ -102,7 +104,7 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
 
 5. Facilitator prepares the SP1 v6.1 light-client migrations in the same branch.
 
-   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients. For `mainnet`, `testnet`, and non-default shadow environments, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia` rehearsals.
+   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients, and make sure the proof generation for the migrated clients runs a proof-api version built against SP1 v6.1. For `mainnet`, `testnet`, and non-default shadow environments, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia` rehearsals.
 
    ```bash
    just deploy-light-client
@@ -134,6 +136,8 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
    Run this once per upgraded client. This is a calldata-only generator, so it can schedule the v3 `migrateClient(clientId, counterpartyInfo, newImplementation)` call before the `ICS26Router` proxy has been upgraded. Use a unique Safe nonce for every schedule transaction.
 
 7. After the timelock delay, execute the core upgrades first.
+
+   Before executing anything, halt packet relaying for this chain. The contracts pass through mixed v2/v3 states between the individual executions below, and no packets should be relayed until verification passes in step 11.
 
    ```bash
    just execute-v3-ics20transfer-upgrade-params <execute_safe_nonce_1>
@@ -179,6 +183,8 @@ The `with-sp1` recipe derives the expected migration count from the client-id li
     ```bash
     just verify-deployment
     ```
+
+    Resume packet relaying only after verification passes.
 
 12. If any account needs roles that are not represented in the current deployment JSON, grant them through the `AccessManager` after the upgrade.
 
