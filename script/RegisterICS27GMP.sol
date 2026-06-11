@@ -15,7 +15,7 @@ contract RegisterICS27GMP is DeploymentVerifier {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);

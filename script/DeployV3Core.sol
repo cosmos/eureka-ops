@@ -10,11 +10,9 @@ import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
-import { ICS27GMP } from "solidity-ibc-eureka/contracts/ICS27GMP.sol";
 import { IICS26Router } from "solidity-ibc-eureka/contracts/interfaces/IICS26Router.sol";
 import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol";
 import { IBCERC20 } from "solidity-ibc-eureka/contracts/utils/IBCERC20.sol";
-import { ICS27Account } from "solidity-ibc-eureka/contracts/utils/ICS27Account.sol";
 import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 import { ICS20Lib } from "solidity-ibc-eureka/contracts/utils/ICS20Lib.sol";
 import { ICS27Lib } from "solidity-ibc-eureka/contracts/utils/ICS27Lib.sol";
@@ -97,6 +95,10 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         if (temporaryAdmin != accessManagerDeployment.admin) {
             accessManager.grantRole(IBCRolesLib.ADMIN_ROLE, accessManagerDeployment.admin, 0);
             accessManager.renounceRole(IBCRolesLib.ADMIN_ROLE, temporaryAdmin);
+            // The grant and renounce are separate broadcast transactions; fail loudly if the temporary
+            // deployer somehow still holds ADMIN_ROLE rather than leaving a hot EOA with full admin power.
+            (bool stillAdmin,) = accessManager.hasRole(IBCRolesLib.ADMIN_ROLE, temporaryAdmin);
+            require(!stillAdmin, "temporary admin still holds ADMIN_ROLE after handover");
         }
 
         vm.stopBroadcast();
@@ -155,13 +157,8 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         private
         returns (ICS27GMPDeployment memory)
     {
-        ics27.implementation = address(new ICS27GMP());
-        ics27.accountImplementation = address(new ICS27Account());
-        ERC1967Proxy gmpProxy = new ERC1967Proxy(
-            ics27.implementation,
-            abi.encodeCall(ICS27GMP.initialize, (ics26Proxy, ics27.accountImplementation, address(accessManager)))
-        );
-        ics27.proxy = address(gmpProxy);
+        (ics27.implementation, ics27.accountImplementation, ics27.proxy) =
+            _deployICS27Stack(ics26Proxy, address(accessManager));
         return ics27;
     }
 
@@ -197,9 +194,6 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         string memory ics20Json = vm.serializeAddress("ics20Transfer", "permit2", ics20.permit2);
         vm.writeJson(ics20Json, path, ".ics20Transfer");
 
-        vm.serializeAddress("ics27Gmp", "proxy", ics27.proxy);
-        vm.serializeAddress("ics27Gmp", "implementation", ics27.implementation);
-        string memory ics27Json = vm.serializeAddress("ics27Gmp", "accountImplementation", ics27.accountImplementation);
-        vm.writeJson(ics27Json, path, ".ics27Gmp");
+        _writeICS27GMP(vm, path, ics27);
     }
 }

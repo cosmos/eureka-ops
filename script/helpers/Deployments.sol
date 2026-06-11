@@ -3,11 +3,31 @@ pragma solidity ^0.8.28;
 
 import { Vm } from "forge-std/Vm.sol";
 import { stdJson } from "forge-std/StdJson.sol";
+import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
+import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 
 abstract contract Deployments {
     using stdJson for string;
 
     string internal constant DEPLOYMENT_DIR = "/deployments/";
+
+    /// @notice Reverts unless the sender holds ADMIN_ROLE on the AccessManager.
+    /// @dev Role management goes through the AccessManager admin. When the admin is a timelock, a direct
+    /// broadcast cannot be the sender; use the timelock-* recipes to generate schedule/execute calldata instead.
+    function _requireAccessManagerAdmin(address accessManager, address sender) internal view {
+        (bool isAdmin,) = IAccessManager(accessManager).hasRole(IBCRolesLib.ADMIN_ROLE, sender);
+        // solhint-disable-next-line gas-custom-errors,custom-errors
+        require(
+            isAdmin,
+            string.concat(
+                "sender ",
+                Strings.toHexString(sender),
+                " does not hold ADMIN_ROLE on the AccessManager; if the admin is a timelock,",
+                " use the timelock-* recipes to generate schedule/execute calldata instead of broadcasting directly"
+            )
+        );
+    }
 
     struct AccessManagerDeployment {
         address accessManager;
@@ -101,6 +121,16 @@ abstract contract Deployments {
             accountImplementation: json.readAddressOr(".ics27Gmp.accountImplementation", address(0)),
             proxy: json.readAddressOr(".ics27Gmp.proxy", address(0))
         });
+    }
+
+    /// @notice Single writer for the `.ics27Gmp` section so the fresh-deploy, upgrade-bootstrap, and shadow
+    /// rehearsal paths cannot serialize differently-shaped JSON.
+    function _writeICS27GMP(Vm vm, string memory path, ICS27GMPDeployment memory deployment) internal {
+        vm.serializeAddress("ics27Gmp", "proxy", deployment.proxy);
+        vm.serializeAddress("ics27Gmp", "implementation", deployment.implementation);
+        string memory ics27Json =
+            vm.serializeAddress("ics27Gmp", "accountImplementation", deployment.accountImplementation);
+        vm.writeJson(ics27Json, path, ".ics27Gmp");
     }
 
     struct SP1ICS07TendermintDeployment {

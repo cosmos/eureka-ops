@@ -26,7 +26,7 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         bytes memory preCalldata = vm.envOr("PRE_CALLDATA", bytes(""));
@@ -56,13 +56,17 @@ contract GenerateScriptHelperJSON is Script, Deployments {
 
         // Settings
         bool isTimelockController = false;
-        // If the address is an EOA, the code length will be 0. Otherwise, we can assume it's a timelock controller.
+        // An EOA admin has no code. A contract admin may be a TimelockController, but it may also be a Safe or
+        // other contract that has no getMinDelay() (the README documents EOA/Safe/timelock as supported admins).
+        // Probe getMinDelay() defensively so a Safe admin records admin_is_timelock_controller=false instead of
+        // reverting and breaking every recipe that depends on the script helper.
         if (accessManagerDeployment.admin.code.length != 0) {
-            isTimelockController = true;
-
-            TimelockController timelockController = TimelockController(payable(accessManagerDeployment.admin));
-            uint256 delay = timelockController.getMinDelay();
-            vm.serializeUint(settingsKey, "timelock_delay", delay);
+            try TimelockController(payable(accessManagerDeployment.admin)).getMinDelay() returns (uint256 delay) {
+                isTimelockController = true;
+                vm.serializeUint(settingsKey, "timelock_delay", delay);
+            } catch {
+                isTimelockController = false;
+            }
         }
         string memory settings = vm.serializeBool(settingsKey, "admin_is_timelock_controller", isTimelockController);
 
@@ -108,7 +112,11 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         string memory ics27Json = vm.serializeString(ics27Key, "roles", ics27Roles);
 
         vm.serializeAddress(accessManagerKey, "contract_address", accessManagerDeployment.accessManager);
-        string memory accessManagerRoles = vm.serializeUint(accessManagerRolesKey, "Admin role", IBCRolesLib.ADMIN_ROLE);
+        vm.serializeUint(accessManagerRolesKey, "Admin role", IBCRolesLib.ADMIN_ROLE);
+        // RATE_LIMITER_ROLE is a manager-wide role granted via grant-rate-limiter-role; listing it here gives
+        // ops-revoke-role / timelock-grant-role a scripted path to manage it (otherwise it could not be revoked).
+        string memory accessManagerRoles =
+            vm.serializeUint(accessManagerRolesKey, "Rate Limiter role", IBCRolesLib.RATE_LIMITER_ROLE);
         string memory accessManagerJson = vm.serializeString(accessManagerKey, "roles", accessManagerRoles);
 
         // Collect deployments

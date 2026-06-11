@@ -117,9 +117,14 @@ IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Prefer cu
 
 ### Upgrade a contract that is behind a proxy
 
-Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (ICS26Router for instance).
+> [!IMPORTANT]
+> This is for **routine** UUPS upgrades **after** the v2-to-v3 migration. It performs an `upgradeToAndCall` with **empty** calldata, so it does **not** call `initializeV2`. Do **not** use it to perform the v2-to-v3 core upgrades — use `schedule-v3-*`/`execute-v3-*-upgrade-params` (see [`runbooks/upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md)), which call `initializeV2(accessManager)`. As a guard, `timelock-upgrade-proxy` refuses to upgrade `ICS26Router`/`ICS20Transfer` when the deployment records an `accessManager` but the proxy is not yet AccessManaged by it.
+
+Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (`ICS26Router`, `ICS20Transfer`, or `ICS27GMP`).
 
 Run the script to generate the information needed to submit a proposal to the Safe Wallet:
 ```bash
 just timelock-upgrade-proxy
 ```
+
+The beacon implementations have their own param recipes: `schedule-escrow-upgrade-params`, `schedule-ibcerc20-upgrade-params`, and `schedule-ics27account-upgrade-params` (plus the matching `execute-*`).

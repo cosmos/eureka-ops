@@ -22,7 +22,11 @@ grpcurl_flags := env_var_or_default("GRPCURL_FLAGS", "-plaintext")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 _wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
-_timelock_controller := shell('if [ -n "$1" ] && [ -n "$2" ] && [ -f "deployments/$1/$2.json" ]; then jq -r "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)" "deployments/$1/$2.json"; else echo "0x0000000000000000000000000000000000000000"; fi', environment, chain)
+# Resolves the AccessManager admin (timelock) from the deployment JSON. Returns empty when the environment/chain
+# are unset (so `just --list` and env-agnostic recipes still work), but fails loudly when they are set yet the
+# deployment file or admin key is missing — rather than silently returning the zero address, which would make
+# recipes compute Safe hashes / use `--sender` against address(0).
+_timelock_controller := shell('if [ -z "$1" ] || [ -z "$2" ]; then echo ""; exit 0; fi; f="deployments/$1/$2.json"; test -f "$f" || { echo "timelock admin lookup failed: $f not found" >&2; exit 1; }; jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)" "$f" || { echo "timelock admin not set in $f (.accessManagerRoles.admin / .ics26Router.timelockAdmin)" >&2; exit 1; }', environment, chain)
 
 _verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
@@ -68,8 +72,8 @@ info-timelock:
     echo "Target: 'to' from timelock script output"
     echo "Value: 0"
     echo "Data: 'input' from timelock script output"
-    echo "Predecessor: 0x"
-    echo "Salt: 0x"
+    echo "Predecessor: {{zero_bytes32}}"
+    echo "Salt: {{zero_bytes32}}"
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
 
 [group('utils')]
@@ -343,11 +347,10 @@ ops-migrate-light-client: (ops-script "MigrateLightClient" _broadcast_flags)
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to revoke")
     export REVOKE_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
+    echo "Revoking role $role_key ($REVOKE_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     forge script script/RevokeRole.sol -vvvv {{_broadcast_flags}}
 
 
@@ -369,11 +372,10 @@ timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "Re
 timelock-grant-role timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params "GrantRole" timelock_function nonce)
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to grant")
     export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    echo "Granting role $role_key ($GRANT_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
 
 
@@ -510,11 +512,10 @@ _timelock-params contract_name timelock_function nonce:
 _grant-role script_flags:
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to grant")
     export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    echo "Granting role $role_key ($GRANT_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     forge script script/GrantRole.sol -vvvv {{script_flags}}
 
 _set-custom-erc20 script_flags:

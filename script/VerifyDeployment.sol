@@ -5,6 +5,7 @@ pragma solidity ^0.8.28;
 
 import "forge-std/console.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { V3UpgradeSelectors } from "./helpers/V3UpgradeSelectors.sol";
 import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
 import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
 import { ICS20Lib } from "solidity-ibc-eureka/contracts/utils/ICS20Lib.sol";
@@ -14,6 +15,7 @@ import { IAccessManaged } from "@openzeppelin-contracts/access/manager/IAccessMa
 import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { IBeacon } from "@openzeppelin-contracts/proxy/beacon/IBeacon.sol";
 import { IICS26Router } from "solidity-ibc-eureka/contracts/interfaces/IICS26Router.sol";
+import { IIBCApp } from "solidity-ibc-eureka/contracts/interfaces/IIBCApp.sol";
 import { IICS27GMP } from "solidity-ibc-eureka/contracts/interfaces/IICS27GMP.sol";
 import { ERC1967Proxy } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { ERC1967Utils } from "@openzeppelin-contracts/proxy/ERC1967/ERC1967Utils.sol";
@@ -22,7 +24,7 @@ import {
 } from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/interfaces/ISP1ICS07Tendermint.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { IICS02ClientMsgs } from "solidity-ibc-eureka/contracts/msgs/IICS02ClientMsgs.sol";
-import { IICS02Client, IICS02ClientAccessControlled } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
+import { IICS02Client } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 
@@ -63,7 +65,9 @@ abstract contract DeploymentVerifier is Deployments, Script {
         _assertTargetRoles(
             accessManager, address(routerProxy), IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE
         );
-        _assertTargetRoles(accessManager, address(routerProxy), _ics26MigrationRoleSelectors(), IBCRolesLib.ADMIN_ROLE);
+        _assertTargetRoles(
+            accessManager, address(routerProxy), V3UpgradeSelectors.ics26MigrationSelectors(), IBCRolesLib.ADMIN_ROLE
+        );
         _assertRole(accessManager, IBCRolesLib.ADMIN_ROLE, accessManagerDeployment.admin, "timelock admin");
 
         for (uint32 i = 0; i < accessManagerDeployment.idCustomizers.length; i++) {
@@ -202,16 +206,22 @@ abstract contract DeploymentVerifier is Deployments, Script {
             deployment.accountImplementation,
             "ICS27Account implementation doesn't match"
         );
-        vm.assertEq(
-            address(ics26Router.getIBCApp(ICS27Lib.DEFAULT_PORT_ID)),
-            deployment.proxy,
-            "ICS27 app address doesn't match with the one in ICS26Router"
-        );
+        // getIBCApp reverts with IBCAppNotFound when nothing is registered on the port; translate that into
+        // an actionable message since this is the expected state between the router upgrade and registration.
+        try ics26Router.getIBCApp(ICS27Lib.DEFAULT_PORT_ID) returns (IIBCApp ics27App) {
+            vm.assertEq(
+                address(ics27App), deployment.proxy, "ICS27 app address doesn't match with the one in ICS26Router"
+            );
+        } catch {
+            revert("ICS27GMP is not registered on ICS26Router; run register-ics27-gmp after the ICS26Router upgrade");
+        }
 
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
         _assertTargetRoles(accessManager, deployment.proxy, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
-        _assertTargetRoles(accessManager, deployment.proxy, _ics27BeaconRoleSelectors(), IBCRolesLib.ADMIN_ROLE);
+        _assertTargetRoles(
+            accessManager, deployment.proxy, V3UpgradeSelectors.ics27BeaconSelectors(), IBCRolesLib.ADMIN_ROLE
+        );
     }
 
     function verifyKnownEscrows(
@@ -224,6 +234,9 @@ abstract contract DeploymentVerifier is Deployments, Script {
     {
         ICS20Transfer ics20Transfer = ICS20Transfer(deployment.proxy);
 
+        // NOTE: this only covers clients recorded in the deployment JSON. An escrow created on-chain for a client
+        // that is not in the JSON (e.g. a permissionlessly-added client) is not checked here; the v2-to-v3 runbook
+        // (step 10) directs operators to also initialize escrows for any on-chain client not in the JSON.
         for (uint256 i = 0; i < ics07Deployments.length; ++i) {
             address escrow = ics20Transfer.getEscrow(ics07Deployments[i].clientId);
             if (escrow == address(0)) {
@@ -252,18 +265,6 @@ abstract contract DeploymentVerifier is Deployments, Script {
                 accessManager.getTargetFunctionRole(target, selectors[i]), role, "target function role mismatch"
             );
         }
-    }
-
-    function _ics26MigrationRoleSelectors() internal pure returns (bytes4[] memory) {
-        bytes4[] memory migrationSelectors = new bytes4[](1);
-        migrationSelectors[0] = IICS02ClientAccessControlled.migrateClient.selector;
-        return migrationSelectors;
-    }
-
-    function _ics27BeaconRoleSelectors() internal pure returns (bytes4[] memory) {
-        bytes4[] memory beaconSelectors = new bytes4[](1);
-        beaconSelectors[0] = IICS27GMP.upgradeAccountTo.selector;
-        return beaconSelectors;
     }
 
     function _assertRole(
@@ -333,6 +334,12 @@ abstract contract DeploymentVerifier is Deployments, Script {
 
         IICS02ClientMsgs.CounterpartyInfo memory counterparty = router.getCounterparty(deployment.clientId);
 
+        // Assert the lengths match first: the loop below is bounded by the on-chain length, so without this an
+        // empty/truncated on-chain merkle prefix (e.g. from a migration with a malformed counterparty) would pass
+        // verification while leaving membership proofs broken.
+        vm.assertEq(
+            counterparty.merklePrefix.length, deployment.merklePrefix.length, "merklePrefix length doesn't match"
+        );
         for (uint256 i = 0; i < counterparty.merklePrefix.length; i++) {
             vm.assertEq(counterparty.merklePrefix[i], bytes(deployment.merklePrefix[i]), "merklePrefix doesn't match");
         }
@@ -346,7 +353,7 @@ contract VerifyDeployment is DeploymentVerifier {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);

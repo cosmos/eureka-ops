@@ -26,7 +26,7 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
@@ -65,6 +65,19 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         vm.stopBroadcast();
         _writePlannedLightClients(path, ics07Deployments, sp1ClientIds);
 
+        if (vm.envOr("SHADOW_FORK_DEPLOY_ONLY", false)) {
+            // Prepare-only mode for scripts/shadow-v2-to-v3-timelock-rehearsal.sh: deploy the v3 stack and record
+            // its addresses, but leave the fork's proxies on v2 so that script can drive the real
+            // TimelockController schedule/execute path (and the predecessor ordering) with the recipe-generated
+            // calldata. The upgrade / register / initialize / verify steps are performed through the timelock there.
+            vm.assertEq(
+                sp1Deployments, _nonEmptyStringCount(sp1ClientIds), "unexpected SP1 light client deployment count"
+            );
+            _writeDeployment(path, accessManagerDeployment, ics26, ics20, ics27);
+            console.log("Deploy-only: wrote v3 addresses to %s; proxies left on v2 for the timelock rehearsal.", path);
+            return;
+        }
+
         vm.startBroadcast(accessManagerDeployment.admin);
         UUPSUpgradeable(ics20.proxy)
             .upgradeToAndCall(
@@ -87,16 +100,14 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         vm.stopBroadcast();
 
         uint256 expectedSp1Deployments = _nonEmptyStringCount(sp1ClientIds);
-        if (expectedSp1Deployments != 0) {
-            vm.assertEq(sp1Deployments, expectedSp1Deployments, "unexpected SP1 light client deployment count");
-        }
+        vm.assertEq(sp1Deployments, expectedSp1Deployments, "unexpected SP1 light client deployment count");
         uint256 expectedSp1Migrations = vm.envOr("EXPECTED_SP1_MIGRATIONS", uint256(0));
         if (expectedSp1Migrations == 0) {
             expectedSp1Migrations = expectedSp1Deployments;
         }
-        if (expectedSp1Migrations != 0) {
-            vm.assertEq(sp1Migrations, expectedSp1Migrations, "unexpected SP1 light client migration count");
-        }
+        // Asserted even when the expectation is zero: a core-only rehearsal must prove that no light client
+        // was migrated, otherwise a stale .implementation in the shadow JSON would migrate a client silently.
+        vm.assertEq(sp1Migrations, expectedSp1Migrations, "unexpected SP1 light client migration count");
 
         _initializeKnownEscrows(ics20, ics07Deployments);
 
@@ -278,9 +289,6 @@ contract ShadowForkV2ToV3Upgrade is DeploymentVerifier, SP1ICS07TendermintDeploy
         vm.writeJson(vm.toString(ics20.implementation), path, ".ics20Transfer.implementation");
         vm.writeJson(vm.toString(ics20.escrowImplementation), path, ".ics20Transfer.escrowImplementation");
         vm.writeJson(vm.toString(ics20.ibcERC20Implementation), path, ".ics20Transfer.ibcERC20Implementation");
-        vm.serializeAddress("ics27Gmp", "proxy", ics27.proxy);
-        vm.serializeAddress("ics27Gmp", "implementation", ics27.implementation);
-        string memory ics27Json = vm.serializeAddress("ics27Gmp", "accountImplementation", ics27.accountImplementation);
-        vm.writeJson(ics27Json, path, ".ics27Gmp");
+        _writeICS27GMP(vm, path, ics27);
     }
 }

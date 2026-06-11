@@ -131,9 +131,11 @@ just deploy-light-client      # enter the client ID, confirm "deploy a copy" wit
 ```
 This deploys a new `SP1ICS07Tendermint` with the fresh state from step 1, **reusing** the existing vkeys + verifier, and writes the new `implementation` (and `verifier`) into the deployment JSON.
 
-### ⚠️ Gotcha: OpenZeppelin version pin
+### ⚠️ Gotcha: compile against the version the client was deployed from
 > [!IMPORTANT]
-> The `solidity-v2.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
+> `package.json` on `main` now pins `@cosmos/solidity-ibc-eureka` to a **v3** tag (`solidity-v3.0.1`) and `@openzeppelin/contracts*` to `5.6.1`, and `script/helpers/SP1ICS07TendermintDeployer.sol` imports the **SP1 v6.1** verifiers. Deploying a recovery client from this checkout produces a **v3 / SP1 v6.1** `SP1ICS07Tendermint`. That is correct only if the chain you are recovering is already on v3 / SP1 v6.1.
+>
+> If you are recovering a client on a **still-v2** chain, a v3 / SP1 v6.1 client will not verify proofs produced by a v2-era proof-api (vkey/verifier mismatch) and the client stays unrecoverable. Before running `just deploy-light-client`, check out the `@cosmos/solidity-ibc-eureka` (and matching `@openzeppelin/contracts*`) versions the **deployed** client was built from — confirm against the live contract per §2 — and `bun install` so `node_modules` matches that version. Older `solidity-v2.x` checkouts pinned `@openzeppelin/contracts*` to `5.4.0` because they import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin removed after 5.4.0; if a v2 build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*, your `node_modules` floated past that pin — re-run `bun install` on the v2 checkout.
 
 ### Verify
 ```

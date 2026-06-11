@@ -34,34 +34,18 @@ shadow-copy-deployment chain source_env shadow_env:
     echo "Shadow deployment written to deployments/{{shadow_env}}/{{chain}}.json"
 
 [group('shadow')]
-[doc('Deploys an SP1 light client against an already-running shadow fork')]
-shadow-deploy-light-client chain shadow_env port client_id="":
-    #!/bin/bash
-    set -euo pipefail
-    deployer="${SHADOW_FORK_DEPLOYER:-0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266}"
-    fork_rpc="http://127.0.0.1:{{port}}"
-    if [ -n "{{client_id}}" ]; then
-        export CLIENT_ID="{{client_id}}"
-    fi
-    export SP1_DEPLOY_COPY=true
-    export DEPLOYMENT_ENV="{{shadow_env}}"
-    export EUREKA_ENVIRONMENT="{{shadow_env}}"
-    export EUREKA_CHAIN="{{chain}}"
-    export ETH_RPC="$fork_rpc"
-    export FOUNDRY_ETH_RPC_URL="$fork_rpc"
-    forge script script/DeploySP1ICS07Tendermint.sol:DeploySP1ICS07TendermintScript \
-        --rpc-url "$fork_rpc" \
-        --broadcast \
-        --unlocked \
-        --sender "$deployer" \
-        -vvvv
-
-[group('shadow')]
 [doc('Runs the v2-to-v3 upgrade sequence against an already-running Anvil shadow fork')]
 shadow-v2-to-v3 chain source_env shadow_env port:
     #!/bin/bash
     set -euo pipefail
     bash scripts/shadow-v2-to-v3-upgrade.sh "{{chain}}" "{{source_env}}" "{{shadow_env}}" "http://127.0.0.1:{{port}}"
+
+[group('shadow')]
+[doc('Runs the v2-to-v3 upgrade through the real TimelockController (schedule/execute + predecessor ordering) against a running shadow fork. Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+shadow-v2-to-v3-timelock chain source_env shadow_env port:
+    #!/bin/bash
+    set -euo pipefail
+    bash scripts/shadow-v2-to-v3-timelock-rehearsal.sh "{{chain}}" "{{source_env}}" "{{shadow_env}}" "http://127.0.0.1:{{port}}"
 
 [group('shadow')]
 [doc('Runs the v2-to-v3 upgrade sequence using an already-prepared shadow deployment JSON')]
@@ -75,13 +59,17 @@ shadow-v2-to-v3-preserve chain source_env shadow_env port expected_sp1_migration
 shadow-v2-to-v3-with-sp1 chain source_env shadow_env port sp1_client_ids:
     #!/bin/bash
     set -euo pipefail
+    if [ -z "{{sp1_client_ids}}" ]; then
+        echo "At least one SP1 client id is required."
+        exit 1
+    fi
     IFS=',' read -ra client_ids <<< "{{sp1_client_ids}}"
     expected_sp1_migrations=0
-    for client_id in "${client_ids[@]}"; do
-        if [ -z "$client_id" ]; then
-            continue
+    # ${arr[@]+...} guards against the empty-array `set -u` error on bash 3.2 (macOS /bin/bash).
+    for client_id in ${client_ids[@]+"${client_ids[@]}"}; do
+        if [ -n "$client_id" ]; then
+            expected_sp1_migrations=$((expected_sp1_migrations + 1))
         fi
-        expected_sp1_migrations=$((expected_sp1_migrations + 1))
     done
     if [ "$expected_sp1_migrations" -eq 0 ]; then
         echo "At least one SP1 client id is required."
@@ -95,9 +83,9 @@ shadow-v2-to-v3-sepolia port="8545":
     just shadow-v2-to-v3 11155111 testnet shadow-sepolia {{port}}
 
 [group('shadow')]
-[doc('Runs the v2-to-v3 upgrade sequence against an already-prepared Sepolia shadow deployment')]
-shadow-v2-to-v3-sepolia-preserve port="8545" expected_sp1_migrations="0":
-    just shadow-v2-to-v3-preserve 11155111 testnet shadow-sepolia {{port}} {{expected_sp1_migrations}}
+[doc('Sepolia v2-to-v3 timelock rehearsal (real schedule/execute + ordering). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+shadow-v2-to-v3-sepolia-timelock port="8545":
+    just shadow-v2-to-v3-timelock 11155111 testnet shadow-sepolia {{port}}
 
 [group('shadow')]
 [doc('Runs the full Sepolia v2-to-v3 plus SP1 migration rehearsal')]
@@ -110,19 +98,11 @@ shadow-v2-to-v3-mainnet port="8546":
     just shadow-v2-to-v3 1 mainnet shadow-mainnet {{port}}
 
 [group('shadow')]
-[doc('Runs the v2-to-v3 upgrade sequence against an already-prepared mainnet shadow deployment')]
-shadow-v2-to-v3-mainnet-preserve port="8546" expected_sp1_migrations="0":
-    just shadow-v2-to-v3-preserve 1 mainnet shadow-mainnet {{port}} {{expected_sp1_migrations}}
+[doc('Mainnet v2-to-v3 timelock rehearsal (real schedule/execute + ordering). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+shadow-v2-to-v3-mainnet-timelock port="8546":
+    just shadow-v2-to-v3-timelock 1 mainnet shadow-mainnet {{port}}
 
 [group('shadow')]
 [doc('Runs the full mainnet v2-to-v3 plus SP1 migration rehearsal')]
 shadow-v2-to-v3-mainnet-with-sp1 sp1_client_ids port="8546":
     just shadow-v2-to-v3-with-sp1 1 mainnet shadow-mainnet {{port}} "{{sp1_client_ids}}"
-
-[group('shadow')]
-[doc('Runs the v2-to-v3 upgrade sequence on both default shadow forks')]
-shadow-v2-to-v3-all sepolia_port="8545" mainnet_port="8546":
-    #!/bin/bash
-    set -euo pipefail
-    just shadow-v2-to-v3-sepolia {{sepolia_port}}
-    just shadow-v2-to-v3-mainnet {{mainnet_port}}

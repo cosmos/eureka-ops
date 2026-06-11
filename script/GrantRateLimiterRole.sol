@@ -17,7 +17,7 @@ contract GrantRateLimiterRole is Script, Deployments {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         string memory clientId = vm.prompt("Client ID of the escrow address to grant the role to");
@@ -31,6 +31,9 @@ contract GrantRateLimiterRole is Script, Deployments {
         address escrow = ics20Transfer.getEscrow(clientId);
         vm.assertNotEq(escrow, address(0), "Escrow address must not be zero");
 
+        // NOTE: RATE_LIMITER_ROLE is a single manager-wide role, while the restriction is configured per escrow
+        // target. Once multiple escrows have had their target function role configured, every RATE_LIMITER_ROLE
+        // holder can set rate limits on all of them — there is no per-escrow isolation.
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(
             IAccessManager.setTargetFunctionRole,
@@ -39,6 +42,8 @@ contract GrantRateLimiterRole is Script, Deployments {
         calls[1] = abi.encodeCall(IAccessManager.grantRole, (IBCRolesLib.RATE_LIMITER_ROLE, rateLimiterAddress, 0));
 
         vm.startBroadcast();
+        (, address sender,) = vm.readCallers();
+        _requireAccessManagerAdmin(accessManagerDeployment.accessManager, sender);
 
         AccessManager(accessManagerDeployment.accessManager).multicall(calls);
 

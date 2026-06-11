@@ -17,7 +17,8 @@ contract SetCustomERC20 is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
@@ -29,7 +30,6 @@ contract SetCustomERC20 is Script, Deployments {
 
         bytes memory denomPrefix = abi.encodePacked(ICS20Lib.DEFAULT_PORT_ID, "/", clientId, "/");
         bytes memory fullDenomPath = abi.encodePacked(denomPrefix, bytes(denom));
-
 
         vm.startBroadcast();
 

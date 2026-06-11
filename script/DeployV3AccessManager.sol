@@ -9,45 +9,40 @@ import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessMa
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { V3UpgradeSelectors } from "./helpers/V3UpgradeSelectors.sol";
 import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 import { ICS27GMP } from "solidity-ibc-eureka/contracts/ICS27GMP.sol";
 import { ICS27Account } from "solidity-ibc-eureka/contracts/utils/ICS27Account.sol";
-import { IICS02ClientAccessControlled } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
-import { IICS27GMP } from "solidity-ibc-eureka/contracts/interfaces/IICS27GMP.sol";
+import { DeployAccessManagerWithRoles } from "solidity-ibc-eureka/scripts/deployments/DeployAccessManagerWithRoles.sol";
 
 /// @notice Shared AccessManager wiring for the v3 IBC contracts.
 /// @dev Mixed into both the bootstrap below and other scripts (e.g. DeployV3Core, shadow rehearsals) so that
 /// every flow configures the same target function roles and role grants on a manager it currently administers.
-abstract contract V3AccessManagerConfigurator {
+/// The base target-function-role wiring is inherited from the upstream `DeployAccessManagerWithRoles` helper so
+/// it stays in lockstep with the contracts; only the two selectors not yet exposed by IBCRolesLib are added here.
+abstract contract V3AccessManagerConfigurator is DeployAccessManagerWithRoles {
     function _setTargetRoles(IAccessManager manager, address ics26, address ics20, address ics27) internal {
-        manager.setTargetFunctionRole(ics26, IBCRolesLib.ics26IdCustomizerSelectors(), IBCRolesLib.ID_CUSTOMIZER_ROLE);
-        manager.setTargetFunctionRole(ics26, IBCRolesLib.ics26RelayerSelectors(), IBCRolesLib.RELAYER_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.erc20CustomizerSelectors(), IBCRolesLib.ERC20_CUSTOMIZER_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.delegateSenderSelectors(), IBCRolesLib.DELEGATE_SENDER_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.beaconUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
-        manager.setTargetFunctionRole(ics20, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
-        manager.setTargetFunctionRole(ics26, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
-        manager.setTargetFunctionRole(ics26, _ics26MigrationSelectors(), IBCRolesLib.ADMIN_ROLE);
-        manager.setTargetFunctionRole(ics27, IBCRolesLib.pauserSelectors(), IBCRolesLib.PAUSER_ROLE);
-        manager.setTargetFunctionRole(ics27, IBCRolesLib.unpauserSelectors(), IBCRolesLib.UNPAUSER_ROLE);
-        manager.setTargetFunctionRole(ics27, IBCRolesLib.uupsUpgradeSelectors(), IBCRolesLib.ADMIN_ROLE);
-        manager.setTargetFunctionRole(ics27, _ics27BeaconSelectors(), IBCRolesLib.ADMIN_ROLE);
+        accessManagerSetTargetRoles(manager, ics26, ics20, ics27, false);
+        manager.setTargetFunctionRole(ics26, V3UpgradeSelectors.ics26MigrationSelectors(), IBCRolesLib.ADMIN_ROLE);
+        manager.setTargetFunctionRole(ics27, V3UpgradeSelectors.ics27BeaconSelectors(), IBCRolesLib.ADMIN_ROLE);
     }
 
-    // IBCRolesLib.beaconUpgradeSelectors() only covers the ICS20 beacons; the ICS27 account beacon upgrade
-    // selector lives here until it is added to IBCRolesLib upstream (cosmos/solidity-ibc-eureka#1046).
-    function _ics27BeaconSelectors() internal pure returns (bytes4[] memory) {
-        bytes4[] memory beaconSelectors = new bytes4[](1);
-        beaconSelectors[0] = IICS27GMP.upgradeAccountTo.selector;
-        return beaconSelectors;
-    }
-
-    function _ics26MigrationSelectors() internal pure returns (bytes4[] memory) {
-        bytes4[] memory migrationSelectors = new bytes4[](1);
-        migrationSelectors[0] = IICS02ClientAccessControlled.migrateClient.selector;
-        return migrationSelectors;
+    /// @notice Deploys the ICS27GMP stack (account implementation, GMP implementation, initialized proxy).
+    /// @dev Shared by the bootstrap and the fresh-deploy path so both initialize the proxy identically.
+    function _deployICS27Stack(
+        address ics26Proxy,
+        address accessManager
+    )
+        internal
+        returns (address implementation, address accountImplementation, address proxy)
+    {
+        accountImplementation = address(new ICS27Account());
+        implementation = address(new ICS27GMP());
+        proxy = address(
+            new ERC1967Proxy(
+                implementation, abi.encodeCall(ICS27GMP.initialize, (ics26Proxy, accountImplementation, accessManager))
+            )
+        );
     }
 
     function _grantRoles(IAccessManager manager, Deployments.AccessManagerDeployment memory deployment) internal {
@@ -93,14 +88,8 @@ contract V3AccessManagerBootstrap is V3AccessManagerConfigurator {
         require(accessManagerDeployment.admin != address(0), "timelock admin must be set");
 
         AccessManager manager = new AccessManager(address(this));
-        address accountImplementation = address(new ICS27Account());
-        address implementation = address(new ICS27GMP());
-        address proxy = address(
-            new ERC1967Proxy(
-                implementation,
-                abi.encodeCall(ICS27GMP.initialize, (ics26.proxy, accountImplementation, address(manager)))
-            )
-        );
+        (address implementation, address accountImplementation, address proxy) =
+            _deployICS27Stack(ics26.proxy, address(manager));
 
         _setTargetRoles(manager, ics26.proxy, ics20.proxy, proxy);
         _grantRoles(manager, accessManagerDeployment);
@@ -122,7 +111,7 @@ contract DeployV3AccessManager is Script, Deployments {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
@@ -152,18 +141,10 @@ contract DeployV3AccessManager is Script, Deployments {
         vm.stopBroadcast();
 
         vm.writeJson(vm.toString(manager), path, ".accessManager");
-        _writeICS27GMP(path, ics27);
+        _writeICS27GMP(vm, path, ics27);
         _writeAccessManagerRoles(vm, path, accessManagerDeployment);
         console.log("AccessManager deployed at: ", manager);
         console.log("ICS27GMP deployed at: ", ics27.proxy);
         return manager;
-    }
-
-    function _writeICS27GMP(string memory path, ICS27GMPDeployment memory deployment) private {
-        vm.serializeAddress("ics27Gmp", "proxy", deployment.proxy);
-        vm.serializeAddress("ics27Gmp", "implementation", deployment.implementation);
-        string memory ics27Json =
-            vm.serializeAddress("ics27Gmp", "accountImplementation", deployment.accountImplementation);
-        vm.writeJson(ics27Json, path, ".ics27Gmp");
     }
 }

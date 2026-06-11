@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
+import { VmSafe } from "forge-std/Vm.sol";
 import { Deployments } from "./helpers/Deployments.sol";
 import { AccessManager } from "@openzeppelin-contracts/access/manager/AccessManager.sol";
 import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
@@ -16,7 +17,7 @@ contract ReplaceTimelockAdmin is Script, Deployments {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
         string memory path =
-            string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         address newTimelockAdmin = vm.promptAddress("New timelock admin");
@@ -31,13 +32,24 @@ contract ReplaceTimelockAdmin is Script, Deployments {
         calls[1] = abi.encodeCall(IAccessManager.revokeRole, (IBCRolesLib.ADMIN_ROLE, accessManagerDeployment.admin));
 
         vm.startBroadcast();
+        (, address sender,) = vm.readCallers();
+        _requireAccessManagerAdmin(accessManagerDeployment.accessManager, sender);
 
         AccessManager(accessManagerDeployment.accessManager).multicall(calls);
 
         vm.stopBroadcast();
 
-        // Update the deployment JSON
-        vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".ics26Router.timelockAdmin");
-        vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".accessManagerRoles.admin");
+        // Only update the deployment JSON on an actual broadcast (the EOA-admin `deploy-replace-timelock-admin`
+        // flow). The timelock flow runs this script as a dry-run to generate schedule/execute calldata; writing
+        // then would record the new admin before the on-chain change lands, breaking the later execute leg
+        // (the `New timelock admin must be different` assert would trip and the sender would resolve wrongly).
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".ics26Router.timelockAdmin");
+            vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".accessManagerRoles.admin");
+        } else {
+            console.log("Dry run: deployment JSON not modified.");
+            console.log("After the timelock executes on-chain, set .accessManagerRoles.admin and");
+            console.log(".ics26Router.timelockAdmin to:", vm.toString(address(newTimelockAdmin)));
+        }
     }
 }

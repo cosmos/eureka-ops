@@ -1,5 +1,8 @@
 ## RUNBOOK - upgrading ICS20Transfer contract
 
+> [!IMPORTANT]
+> This runbook is for **routine** UUPS upgrades after the v2-to-v3 migration; `schedule-ics20transfer-upgrade-params` / `timelock-upgrade-proxy` upgrade with **empty** calldata (no `initializeV2`). For the **v2-to-v3** upgrade use `schedule-v3-ics20transfer-upgrade-params` / `execute-v3-ics20transfer-upgrade-params` instead (they call `initializeV2(accessManager)`); see [`upgrade-v2-to-v3.md`](./upgrade-v2-to-v3.md). The recipes guard against this mistake (they refuse an empty-calldata upgrade when the proxy is not yet AccessManaged by the recorded AccessManager), but use the right recipe to begin with.
+
 ### Runbook
 1. The facilitator sends signers the operation branch name.
 2. Facilitator updates implementation address in the `deployments/<environment>/<chain>.json` and runs `just verify-deployment <environment> <chain_id>`

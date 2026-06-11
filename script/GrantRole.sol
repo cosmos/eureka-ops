@@ -17,16 +17,24 @@ contract GrantRole is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
         vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
 
-        uint64 role = uint64(vm.envUint("GRANT_ROLE"));
+        uint256 roleValue = vm.envUint("GRANT_ROLE");
+        // v3 roles are AccessManager uint64 role ids; a value this large is most likely a v2 bytes32 role hash.
+        require(roleValue <= type(uint64).max, "GRANT_ROLE does not fit in uint64");
+        // casting to 'uint64' is safe because the require above bounds-checks the value
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint64 role = uint64(roleValue);
         address grantee = vm.promptAddress("Grantee address");
 
         vm.startBroadcast();
+        (, address sender,) = vm.readCallers();
+        _requireAccessManagerAdmin(accessManagerDeployment.accessManager, sender);
         bytes memory preCalldata = vm.envOr("PRE_CALLDATA", bytes(""));
         if (preCalldata.length > 0) {
             address preCallAddress = vm.envAddress("PRE_CALL_CONTRACT_ADDRESS");
