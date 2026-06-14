@@ -9,11 +9,14 @@ set -euo pipefail
 #   2. Generates the schedule/execute timelock calldata from the actual `schedule-v3-*` / `execute-v3-*` recipes.
 #   3. Submits it to the real TimelockController by impersonating the proposer Safe on the fork.
 #   4. Proves the predecessor ordering: executing the ICS26Router upgrade before the ICS20Transfer upgrade must
-#      revert; transfer-then-router then succeeds.
-#   5. Executes the beacon upgrades and SP1 migrations, registers ICS27, initializes escrows, and verifies.
+#      revert.
+#   5. Executes the whole upgrade (both proxy upgrades + beacon upgrades + SP1 migrations) as ONE atomic Safe
+#      MultiSend transaction driven through the REAL Safe (execTransaction, pre-approved-hash signatures), then
+#      registers ICS27, initializes escrows, and verifies.
 #
 # This validates the timelock schedule/execute/ordering and the recipe-generated calldata end-to-end on the real
-# v2 contracts — the part the direct-broadcast rehearsal cannot cover.
+# v2 contracts — including the production atomic Safe MultiSend execute — the part the direct-broadcast rehearsal
+# cannot cover.
 #
 # Requires an already-running Anvil fork of the (still-v2) chain, started with --auto-impersonate, e.g.
 #   just shadow-start-sepolia
@@ -27,6 +30,7 @@ set -euo pipefail
 #   SHADOW_FORK_PRESERVE_DEPLOYMENT=1   reuse an already-prepared shadow JSON instead of copying the source.
 #   SHADOW_FORK_DEPLOYER         (optional) funded EOA used to broadcast deploys (default: anvil account 0).
 #   SHADOW_FORK_BALANCE_WEI      (optional) balance set on impersonated accounts (default: 100 ether).
+#   MULTISEND_CALL_ONLY          (optional) override the MultiSendCallOnly address (default canonical Safe v1.4.1).
 
 usage() {
   sed -n '4,40p' "$0"
@@ -166,6 +170,148 @@ sp1_ids() {
   done
 }
 
+zero_addr="0x0000000000000000000000000000000000000000"
+
+# Extract the value of a greppable "<label>: <value>" line (single-token value) from recipe output.
+recipe_field() {
+  local out="$1" label="$2"
+  printf '%s\n' "$out" | awk -v lbl="$label" '
+    !found && $0 ~ "^" lbl ": " { print $NF; found=1 }
+    END { exit !found }'
+}
+
+# Collect SP1 client ids into the global _ms_ids array (passed as positional args to the *client_ids recipe).
+build_client_id_args() {
+  _ms_ids=()
+  while IFS= read -r cid; do
+    [ -n "$cid" ] && _ms_ids+=("$cid")
+  done < <(sp1_ids)
+}
+
+# Execute the entire v3 upgrade as ONE atomic Safe MultiSend transaction, driven through the REAL Safe via
+# execTransaction. No private keys are needed on a fork: each of the first `threshold` owners pre-approves the
+# tx hash on-chain (approveHash), and a prevalidated-signature (v=1) blob authorises the call.
+execute_atomic() {
+  # 1. Single source of truth: the recipe builds the MultiSend(bytes) calldata, target, and operation.
+  build_client_id_args
+  local ms_out
+  if ! ms_out="$(just execute-v3-upgrade-multisend "" ${_ms_ids[@]+"${_ms_ids[@]}"})"; then
+    echo "recipe failed: just execute-v3-upgrade-multisend" >&2
+    printf '%s\n' "${ms_out:-}" >&2
+    exit 1
+  fi
+
+  local to data operation
+  to="$(recipe_field "$ms_out" "multisend to")" || {
+    echo "could not parse 'multisend to:' from execute-v3-upgrade-multisend output" >&2
+    printf '%s\n' "$ms_out" >&2
+    exit 1
+  }
+  data="$(recipe_field "$ms_out" "multisend data")" || {
+    echo "could not parse 'multisend data:' from execute-v3-upgrade-multisend output" >&2
+    printf '%s\n' "$ms_out" >&2
+    exit 1
+  }
+  operation="$(recipe_field "$ms_out" "multisend operation")" || {
+    echo "could not parse 'multisend operation:' from execute-v3-upgrade-multisend output" >&2
+    printf '%s\n' "$ms_out" >&2
+    exit 1
+  }
+  if [ "$operation" != "1" ]; then
+    echo "expected MultiSend operation=1 (DelegateCall) but recipe reported '$operation'" >&2
+    exit 1
+  fi
+  echo "    multisend to:        $to"
+  echo "    multisend operation: $operation (DelegateCall)"
+
+  # 2. The canonical MultiSendCallOnly must already be deployed on the fork (mainnet/Sepolia have it).
+  local ms_code
+  ms_code="$(cast code "$to" --rpc-url "$fork_rpc")"
+  if [ -z "$ms_code" ] || [ "$ms_code" = "0x" ]; then
+    echo "no contract code at MultiSendCallOnly address $to on the fork." >&2
+    echo "The canonical MultiSendCallOnly (0x9641d764fc13c8B624c04430C7356C1C7C8102e2) should be present on a" >&2
+    echo "mainnet/Sepolia fork; set MULTISEND_CALL_ONLY if your fork uses a different address." >&2
+    exit 1
+  fi
+
+  # 3. Read the Safe owner set + threshold and compute the tx hash on-chain (operation=1/DelegateCall).
+  local threshold nonce tx_hash owners
+  threshold="$(cast call "$safe" "getThreshold()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
+  nonce="$(cast call "$safe" "nonce()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
+  tx_hash="$(cast call "$safe" \
+    "getTransactionHash(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,uint256)(bytes32)" \
+    "$to" 0 "$data" 1 0 0 0 "$zero_addr" "$zero_addr" "$nonce" --rpc-url "$fork_rpc")"
+  echo "    safe threshold:      $threshold"
+  echo "    safe nonce:          $nonce"
+  echo "    safe tx hash:        $tx_hash"
+
+  # Cross-check the recipe's signer-facing safeTxHash (the value humans verify in the Safe UI) against the
+  # hash the Safe itself computes here. A defect in the recipe's hashing would otherwise only surface in
+  # production; assert they agree so the rehearsal covers the exact artifact signers approve.
+  local recipe_tx_hash
+  recipe_tx_hash="$(recipe_field "$ms_out" "multisend safeTxHash")" || {
+    echo "could not parse 'multisend safeTxHash:' from execute-v3-upgrade-multisend output" >&2
+    printf '%s\n' "$ms_out" >&2
+    exit 1
+  }
+  if [ "$(printf '%s' "$recipe_tx_hash" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$tx_hash" | tr 'A-Z' 'a-z')" ]; then
+    echo "recipe safeTxHash ($recipe_tx_hash) does not match the Safe's on-chain getTransactionHash ($tx_hash);" >&2
+    echo "the signer-facing hash and the hash actually executed disagree -- aborting." >&2
+    exit 1
+  fi
+  echo "    recipe safeTxHash:   $recipe_tx_hash (matches on-chain)"
+
+  # getOwners() prints "[0xAaa, 0xBbb]"; normalise to one lowercase 0x-address per line.
+  owners="$(cast call "$safe" "getOwners()(address[])" --rpc-url "$fork_rpc" \
+    | tr -d '[]' | tr ',' '\n' | tr -d ' ' | tr 'A-Z' 'a-z' | grep -E '^0x[0-9a-f]{40}$')"
+
+  # 4. The first `threshold` owners pre-approve the hash on-chain (fork is --auto-impersonate).
+  local approvers=()
+  local count=0
+  while IFS= read -r owner; do
+    [ -n "$owner" ] || continue
+    [ "$count" -ge "$threshold" ] && break
+    cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$owner" "$balance" >/dev/null
+    echo "    approveHash by owner $owner"
+    if ! cast send "$safe" "approveHash(bytes32)" "$tx_hash" --from "$owner" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
+      echo "FAILED: approveHash by $owner" >&2
+      exit 1
+    fi
+    approvers+=("$owner")
+    count=$((count + 1))
+  done <<< "$owners"
+
+  if [ "$count" -lt "$threshold" ]; then
+    echo "Safe has fewer owners ($count) than its threshold ($threshold); cannot assemble signatures." >&2
+    exit 1
+  fi
+
+  # 5. Build the prevalidated-signature blob: per approver a 65-byte sig of r=owner (left-padded), s=0, v=1.
+  #    Safe's checkNSignatures requires owners strictly ascending, so sort the approvers by address.
+  local zeros="0000000000000000000000000000000000000000000000000000000000000000"
+  local sigs="0x"
+  local exec_sender=""
+  while IFS= read -r owner; do
+    [ -n "$owner" ] || continue
+    local r
+    r="$(cast abi-encode "f(address)" "$owner")"   # 0x + 32-byte left-padded owner address
+    r="${r#0x}"
+    sigs="${sigs}${r}${zeros}01"
+    [ -z "$exec_sender" ] && exec_sender="$owner"
+  done < <(printf '%s\n' "${approvers[@]}" | sort)
+
+  # 6. Submit the single atomic execTransaction through the real Safe; fail loudly on revert.
+  echo "    execTransaction (operation=1/DelegateCall) from $exec_sender"
+  if ! cast send "$safe" \
+      "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)" \
+      "$to" 0 "$data" 1 0 0 0 "$zero_addr" "$zero_addr" "$sigs" \
+      --from "$exec_sender" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
+    echo "FAILED: atomic Safe MultiSend execTransaction reverted" >&2
+    exit 1
+  fi
+  echo "    ok: v3 upgrade executed atomically via Safe MultiSend"
+}
+
 # ---------------------------------------------------------------------------
 # 2. Schedule every timelocked operation.
 # ---------------------------------------------------------------------------
@@ -192,14 +338,9 @@ cast rpc --rpc-url "$fork_rpc" evm_mine >/dev/null
 echo "==> Asserting ICS26Router upgrade cannot execute before ICS20Transfer upgrade"
 submit_expect_revert "$(recipe_calldata execute-v3-ics26router-upgrade-params)" "execute ICS26Router before ICS20Transfer"
 
-echo "==> Executing upgrades in order"
-submit "$(recipe_calldata execute-v3-ics20transfer-upgrade-params)" "execute ICS20Transfer upgrade"
-submit "$(recipe_calldata execute-v3-ics26router-upgrade-params)" "execute ICS26Router upgrade"
-submit "$(recipe_calldata execute-escrow-upgrade-params)" "execute Escrow beacon upgrade"
-submit "$(recipe_calldata execute-ibcerc20-upgrade-params)" "execute IBCERC20 beacon upgrade"
-while IFS= read -r cid; do
-  submit "$(recipe_calldata execute-v3-light-client-migration-params "$cid")" "execute migration $cid"
-done < <(sp1_ids)
+# The whole upgrade runs as ONE atomic Safe MultiSend execTransaction through the real Safe.
+echo "==> Executing the v3 upgrade atomically via a single Safe MultiSend execTransaction"
+execute_atomic
 
 # ---------------------------------------------------------------------------
 # 5. Register ICS27 (ID customizer), initialize escrows (permissionless), verify.

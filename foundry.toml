@@ -17,6 +17,17 @@
   test = "test"
   fs_permissions = [{ access = "read-write", path = "./" },]
 
+# The Safe contracts (used only by tests to rehearse the v3 upgrade as an atomic Safe MultiSend) hit a
+# via_ir "stack too deep" in Safe.execTransaction. Compile only that dependency without via_ir; the rest of
+# the project keeps via_ir = true (needed for the sp1-ics07-tendermint contract).
+[[profile.default.additional_compiler_profiles]]
+  name = "safe-no-via-ir"
+  via_ir = false
+
+[[profile.default.compilation_restrictions]]
+  paths = "node_modules/@safe-global/safe-smart-account/contracts/**"
+  via_ir = false
+
 [fmt]
   bracket_spacing = true
   int_types = "long"

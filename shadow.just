@@ -41,7 +41,7 @@ shadow-v2-to-v3 chain source_env shadow_env port:
     bash scripts/shadow-v2-to-v3-upgrade.sh "{{chain}}" "{{source_env}}" "{{shadow_env}}" "http://127.0.0.1:{{port}}"
 
 [group('shadow')]
-[doc('Runs the v2-to-v3 upgrade through the real TimelockController (schedule/execute + predecessor ordering) against a running shadow fork. Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+[doc('Runs the v2-to-v3 upgrade through the real TimelockController (schedule + predecessor ordering, then ONE atomic Safe MultiSend execute) against a running shadow fork. Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
 shadow-v2-to-v3-timelock chain source_env shadow_env port:
     #!/bin/bash
     set -euo pipefail
@@ -83,7 +83,7 @@ shadow-v2-to-v3-sepolia port="8545":
     just shadow-v2-to-v3 11155111 testnet shadow-sepolia {{port}}
 
 [group('shadow')]
-[doc('Sepolia v2-to-v3 timelock rehearsal (real schedule/execute + ordering). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+[doc('Sepolia v2-to-v3 timelock rehearsal (real schedule + ordering + atomic Safe MultiSend execute). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
 shadow-v2-to-v3-sepolia-timelock port="8545":
     just shadow-v2-to-v3-timelock 11155111 testnet shadow-sepolia {{port}}
 
@@ -98,7 +98,7 @@ shadow-v2-to-v3-mainnet port="8546":
     just shadow-v2-to-v3 1 mainnet shadow-mainnet {{port}}
 
 [group('shadow')]
-[doc('Mainnet v2-to-v3 timelock rehearsal (real schedule/execute + ordering). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
+[doc('Mainnet v2-to-v3 timelock rehearsal (real schedule + ordering + atomic Safe MultiSend execute). Requires SAFE_ADDRESS; optional SP1_CLIENT_IDS.')]
 shadow-v2-to-v3-mainnet-timelock port="8546":
     just shadow-v2-to-v3-timelock 1 mainnet shadow-mainnet {{port}}
 
