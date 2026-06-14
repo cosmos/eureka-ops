@@ -27,9 +27,10 @@ abstract contract V3AccessManagerConfigurator is DeployAccessManagerWithRoles {
         manager.setTargetFunctionRole(ics27, V3UpgradeSelectors.ics27BeaconSelectors(), IBCRolesLib.ADMIN_ROLE);
     }
 
-    /// @notice Deploys the ICS27GMP stack (account implementation, GMP implementation, initialized proxy).
-    /// @dev Shared by the bootstrap and the fresh-deploy path so both initialize the proxy identically.
-    function _deployICS27Stack(
+    /// @notice Deploys the raw ICS27GMP contracts (account implementation, GMP implementation, initialized proxy).
+    /// @dev Shared low-level helper used by both the bootstrap and the fresh-deploy path (the latter via
+    /// `DeployV3Core._deployICS27Stack`) so both initialize the proxy identically.
+    function _deployICS27GmpContracts(
         address ics26Proxy,
         address accessManager
     )
@@ -89,7 +90,7 @@ contract V3AccessManagerBootstrap is V3AccessManagerConfigurator {
 
         AccessManager manager = new AccessManager(address(this));
         (address implementation, address accountImplementation, address proxy) =
-            _deployICS27Stack(ics26.proxy, address(manager));
+            _deployICS27GmpContracts(ics26.proxy, address(manager));
 
         _setTargetRoles(manager, ics26.proxy, ics20.proxy, proxy);
         _grantRoles(manager, accessManagerDeployment);

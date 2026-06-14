@@ -84,9 +84,9 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         AccessManager accessManager = new AccessManager(temporaryAdmin);
         accessManagerAddress = address(accessManager);
 
-        ics26 = _deployICS26Router(accessManager, ics26);
-        ics20 = _deployICS20Transfer(accessManager, ics26.proxy, ics20);
-        ics27 = _deployICS27GMP(accessManager, ics26.proxy, ics27);
+        ics26 = _deployICS26Stack(accessManager, ics26);
+        ics20 = _deployICS20Stack(accessManager, ics26.proxy, ics20);
+        ics27 = _deployICS27Stack(accessManager, ics26.proxy, ics27);
 
         IICS26Router(ics26.proxy).addIBCApp(ICS20Lib.DEFAULT_PORT_ID, ics20.proxy);
         IICS26Router(ics26.proxy).addIBCApp(ICS27Lib.DEFAULT_PORT_ID, ics27.proxy);
@@ -106,7 +106,7 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         return (accessManagerAddress, ics26, ics20, ics27);
     }
 
-    function _deployICS26Router(
+    function _deployICS26Stack(
         AccessManager accessManager,
         ProxiedICS26RouterDeployment memory ics26
     )
@@ -120,7 +120,7 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         return ics26;
     }
 
-    function _deployICS20Transfer(
+    function _deployICS20Stack(
         AccessManager accessManager,
         address ics26Proxy,
         ProxiedICS20TransferDeployment memory ics20
@@ -149,7 +149,7 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         return ics20;
     }
 
-    function _deployICS27GMP(
+    function _deployICS27Stack(
         AccessManager accessManager,
         address ics26Proxy,
         ICS27GMPDeployment memory ics27
@@ -158,7 +158,7 @@ contract DeployV3Core is DeploymentVerifier, V3AccessManagerConfigurator {
         returns (ICS27GMPDeployment memory)
     {
         (ics27.implementation, ics27.accountImplementation, ics27.proxy) =
-            _deployICS27Stack(ics26Proxy, address(accessManager));
+            _deployICS27GmpContracts(ics26Proxy, address(accessManager));
         return ics27;
     }
 

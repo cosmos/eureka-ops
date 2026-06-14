@@ -8,6 +8,7 @@ import "forge-std/console.sol";
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
 import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
+import { SafeCast } from "@openzeppelin-contracts/utils/math/SafeCast.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 
@@ -24,12 +25,8 @@ contract RevokeRole is Script, Deployments {
         AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
         vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
 
-        uint256 roleValue = vm.envUint("REVOKE_ROLE");
-        // v3 roles are AccessManager uint64 role ids; a value this large is most likely a v2 bytes32 role hash.
-        require(roleValue <= type(uint64).max, "REVOKE_ROLE does not fit in uint64");
-        // casting to 'uint64' is safe because the require above bounds-checks the value
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint64 role = uint64(roleValue);
+        // v3 roles are AccessManager uint64 role ids; SafeCast reverts if a v2 bytes32 role hash is passed by mistake.
+        uint64 role = SafeCast.toUint64(vm.envUint("REVOKE_ROLE"));
         address grantee = vm.promptAddress("Grantee to revoke address");
 
         vm.startBroadcast();
