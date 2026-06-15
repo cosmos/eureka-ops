@@ -1,228 +1,287 @@
-# RUNBOOK - upgrading solidity-ibc-eureka from v2 to v3, including SP1 v6.1
+# RUNBOOK — solidity-ibc-eureka v2→v3 upgrade (incl. SP1 v6.1)
 
 ## Context
 
-The v3 upgrade changes contract authorization from per-contract `AccessControl` roles to a shared OpenZeppelin `AccessManager`.
-
-The UUPS upgrades for `ICS20Transfer` and `ICS26Router` must call `initializeV2(address accessManager)` during `upgradeToAndCall`. The order matters: upgrade `ICS20Transfer` first, then `ICS26Router`, then the `Escrow` and `IBCERC20` beacon implementations. The ordering is not arbitrary: `ICS20Transfer.initializeV2` authenticates its caller against the deprecated v2 admin records still stored on `ICS26Router`, and `ICS26Router.initializeV2` deletes exactly those records, so upgrading the router first would make the `ICS20Transfer` upgrade revert.
-
-Existing escrow proxies also need `Escrow.initializeV2()` after the escrow beacon has been upgraded. Initialize escrows only after the escrow beacon upgrade has executed. This call can be made by anyone, but it can only run once per escrow.
-
-The core upgrades execute as separate timelocked transactions, so the system passes through mixed v2/v3 states (for example `ICS20Transfer` on v3 while `ICS26Router` is still v2, or escrow beacons upgraded before the escrows are initialized). Halt packet relaying before executing the first core upgrade and resume it only after `just verify-deployment` passes.
-
-The upgrade also deploys `ICS27GMP` and `ICS27Account`. `deploy-v3-access-manager` configures ICS27 pauser/unpauser/admin target roles before AccessManager control is handed over. After the router is upgraded, an ID customizer registers the GMP app on `ICS27Lib.DEFAULT_PORT_ID` with `just register-ics27-gmp`.
-
-In v3, `migrateClient` is controlled by the shared AccessManager instead of the v2 per-client migrator role. Customers that need self-owned client migration should use a proxy-style client design.
-
-The SP1 v6.1 change is not picked up by upgrading the core proxies. Existing SP1 light clients are standalone contracts, so each upgraded client needs a new `SP1ICS07Tendermint` deployment and a timelocked `ICS26Router.migrateClient(...)` call. Run this as part of the same operations branch and timelock window as the v2-to-v3 upgrade.
-
-`deploy-light-client` writes the future light-client implementation address into `deployments/<environment>/<chain_id>.json`. During the window between deploying the new SP1 client and executing `migrateClient`, `just verify-deployment` is expected to fail because the deployment JSON points at the new client while the router still maps the client ID to the old implementation. Only run final deployment verification after the migration executes.
-
-For the same reason, the `verify (mainnet, 1.json)` and `verify (testnet, 11155111.json)` CI jobs fail from the moment the v3 tooling lands on `main` until the verification step (step 11) completes on the corresponding chain: `VerifyDeployment` asserts v3 state (AccessManager authority, ICS27GMP registration) while the chain is still on v2. This is expected — do not "fix" the workflow or block the operation on red verify CI during this window.
-
-In v3, `RATE_LIMITER_ROLE` is a single manager-wide role while the rate-limit restriction is configured per escrow target. Once multiple escrows have their target function role configured, every `RATE_LIMITER_ROLE` holder can set rate limits on all of them — do not assume the v2 per-escrow isolation.
+- **Auth model.** v3 replaces per-contract `AccessControl` with a shared OpenZeppelin `AccessManager`.
+- **Core upgrade order is mandatory:** `ICS20Transfer` → `ICS26Router` → `Escrow` beacon → `IBCERC20` beacon. `ICS20Transfer.initializeV2` authenticates against v2 admin records still stored on `ICS26Router`, and `ICS26Router.initializeV2` deletes them — upgrading the router first makes the transfer upgrade revert. Each `ICS20Transfer`/`ICS26Router` `upgradeToAndCall` must call `initializeV2(accessManager)`.
+- **Escrows:** after the escrow beacon upgrade, every escrow proxy needs a one-time `Escrow.initializeV2()` (callable by anyone, once each).
+- **Atomic execute (step 7).** All timelock executes are submitted as one Safe MultiSend, so the chain never settles in a mixed v2/v3 state. Halt relaying around it anyway as defense-in-depth.
+- **SP1 v6.1.** Light clients are standalone contracts — upgrading the core proxies does not touch them. Each client needs a fresh `SP1ICS07Tendermint` deployment plus a timelocked `ICS26Router.migrateClient(...)`, in this same operation/timelock window. `migrateClient` is now AccessManager-controlled (no per-client migrator role); integrators that need self-owned client migration must move to a proxy-style client design.
+- **vkeys + relayer lockstep.** Set vkeys from the **published `sp1-programs` release** the prover loads, never the repo test fixtures (which can build non-reproducibly and differ). The prod proof-api/relayer must be cut over to a build of that same release **in lockstep** with the on-chain migration, or migrated clients' proofs will not verify.
+- **Expected-failure windows — do NOT "fix":**
+  - `just verify-deployment` fails between `deploy-light-client` and the migration execute (the JSON points at the new client while the router still maps the old one). Only run final verification after the migration.
+  - The `verify (… .json)` CI jobs stay red from when v3 tooling lands on `main` until step 11 completes on that chain (`VerifyDeployment` asserts v3 state while the chain is still v2).
+- **Rate limits.** In v3 `RATE_LIMITER_ROLE` is manager-wide; once any escrow's target role is configured, every holder can set limits on all configured escrows (no v2 per-escrow isolation).
 
 ## Shadow fork rehearsal
 
-To rehearse the full sequence against uncommitted local changes, start an Anvil fork in one terminal:
+Rehearse the full sequence against a local Anvil fork (uncommitted changes included). Restart the fork before each fresh rehearsal.
+
+Sepolia — terminal 1:
 
 ```bash
 export SEPOLIA_RPC=<SEPOLIA_RPC_URL>
 just shadow-start-sepolia
 ```
 
-Then run the rehearsal in another terminal:
+Terminal 2:
 
 ```bash
 just shadow-v2-to-v3-sepolia-with-sp1
 ```
 
-For Ethereum mainnet, use:
+Mainnet — terminal 1:
 
 ```bash
 export MAINNET_RPC=<MAINNET_RPC_URL>
 just shadow-start-mainnet
 ```
 
-Then, in another terminal:
+Terminal 2:
 
 ```bash
 just shadow-v2-to-v3-mainnet-with-sp1
 ```
 
-The generic form is `just shadow-v2-to-v3-with-sp1 <chain_id> <source_env> <shadow_env> <port>`, which is useful for non-default environments. The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` environment, deploys the v3 `AccessManager`, ICS27, and implementations, impersonates `.accessManagerRoles.admin` on the fork to run the upgrades, deploys and migrates the SP1 light clients, registers ICS27 through an ID customizer, initializes known escrows, and runs deployment verification. Restart the Anvil fork before each fresh rehearsal.
+Generic form for non-default environments:
 
-The SP1 clients to deploy and migrate default to every `clientId` in the deployment JSON, and the rehearsal derives the expected migration count from that list and fails if the on-fork migration count does not match — so it cannot silently pass as a core-only upgrade. To rehearse only a subset, pass an explicit comma-separated list as the final argument of the generic recipe.
+```bash
+just shadow-v2-to-v3-with-sp1 <chain_id> <source_env> <shadow_env> <port>
+```
 
-To rehearse against staged SP1 v6.1 state that is not yet committed to the source deployment JSON, prepare a shadow copy and run the preserve recipe instead:
+The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` env, deploys the v3 AccessManager/ICS27/implementations, impersonates `.accessManagerRoles.admin` to run the upgrades, deploys + migrates the SP1 clients, registers ICS27, initializes escrows, and verifies. SP1 clients default to every `clientId` in the JSON, and the rehearsal asserts the on-fork migration count matches that list — so it cannot silently pass as a core-only upgrade. Pass a comma-separated client list as the final argument to rehearse a subset.
+
+To rehearse staged SP1 v6.1 state that is not yet in the source JSON:
 
 ```bash
 just shadow-copy-deployment <chain_id> <source_env> <shadow_env>
-# edit deployments/<shadow_env>/<chain_id>.json with the planned SP1 v6.1 trusted state and verification keys
-just shadow-v2-to-v3-preserve <chain_id> <source_env> <shadow_env> <port> <expected_migrations> <comma_separated_sp1_client_ids>
+# edit deployments/<shadow_env>/<chain_id>.json with the planned SP1 v6.1 trusted state + vkeys
+just shadow-v2-to-v3-preserve <chain_id> <source_env> <shadow_env> <port> <expected_migrations> <client_ids_csv>
 ```
 
 ### Timelock rehearsal (real schedule/execute path)
 
-The `shadow-v2-to-v3-*-with-sp1` recipes above impersonate the AccessManager admin and call the proxies directly, so they validate the v2→v3 contract mechanics but not the timelock layer. To additionally exercise the production path — the `schedule-v3-*` / `execute-v3-*` recipe calldata submitted through the real `TimelockController`, including the predecessor that enforces ICS20-before-ICS26 ordering — run the timelock rehearsal against a running fork:
+The `-with-sp1` recipes impersonate the admin and call the proxies directly — they validate contract mechanics but not the timelock. To exercise the production path (recipe calldata through the real `TimelockController`, including the predecessor that enforces ICS20-before-ICS26 ordering):
 
 ```bash
 just shadow-v2-to-v3-sepolia-timelock
 ```
 
-The proposer/executor Safe and the SP1 client ids are both read from the deployment JSON (no `SAFE_ADDRESS` or `SP1_CLIENT_IDS` env var needed; set `SP1_CLIENT_IDS` to migrate only a subset). It deploys the v3 stack (leaving the fork's proxies on v2), then for each operation generates the recipe calldata, submits it to the timelock by impersonating the Safe, advances the fork past `getMinDelay()`, asserts that executing the ICS26Router upgrade before the ICS20Transfer upgrade reverts, executes the upgrades and SP1 migrations in order, registers ICS27, initializes escrows, and runs `verify-deployment`. The mainnet form is `just shadow-v2-to-v3-mainnet-timelock`.
+Mainnet form:
+
+```bash
+just shadow-v2-to-v3-mainnet-timelock
+```
+
+The proposer/executor Safe and SP1 client ids are read from the JSON (set `SP1_CLIENT_IDS` to migrate a subset). It deploys the v3 stack (proxies left on v2), schedules each op via the impersonated Safe, advances past `getMinDelay()`, asserts that executing ICS26Router before ICS20Transfer reverts, executes the upgrades + migrations, registers ICS27, initializes escrows, and verifies.
 
 ## Runbook
 
-1. Facilitator creates a new operations branch.
+### 1. Create the operations branch
 
-   ```bash
-   just new-operation upgrade-v2-to-v3 <environment> <chain_id>
-   ```
+```bash
+just new-operation upgrade-v2-to-v3 <environment> <chain_id>
+```
 
-2. Facilitator deploys the v3 `AccessManager`.
+### 2. Deploy the v3 AccessManager
 
-   ```bash
-   just deploy-v3-access-manager
-   ```
+**Before running:** `.accessManagerRoles.*` becomes the source of truth at this step (the legacy `.ics20Transfer.*` / `.ics26Router.*` keys are read only when the matching `.accessManagerRoles.*` key is absent, and editing them afterward has no effect). Confirm `delegateSenders`, `relayers`, `pausers`, `unpausers`, `idCustomizers`, and `erc20Customizers` each list **every** account that must keep working after the authority switch — in particular the full relayer set, or relaying breaks at cutover.
 
-   Before running this, make sure `.accessManagerRoles.delegateSenders` contains every existing delegate sender integration that must keep working after the authority switch. `deploy-v3-access-manager` reads the role holders from `.accessManagerRoles.*` (falling back to the legacy `.ics20Transfer.*` / `.ics26Router.*` keys only when the `.accessManagerRoles.*` key is absent), so once that section exists it is the source of truth — editing the legacy keys has no effect. The same applies to `.accessManagerRoles.relayers`, `.pausers`, `.unpausers`, `.idCustomizers`, and `.erc20Customizers`.
+```bash
+just deploy-v3-access-manager
+```
 
-   The script writes `.accessManager`, `.accessManagerRoles`, and `.ics27Gmp` into `deployments/<environment>/<chain_id>.json`. It grants `.accessManagerRoles.admin` the `ADMIN_ROLE`, configures target function roles for the existing `ICS26Router` and `ICS20Transfer` proxies plus the new `ICS27GMP` proxy, and copies the current relayer, pauser, unpauser, delegate sender, ID customizer, and ERC20 customizer accounts from the deployment JSON.
+Writes `.accessManager`, `.accessManagerRoles`, and `.ics27Gmp` to the deployment JSON; grants `.accessManagerRoles.admin` the `ADMIN_ROLE`; configures target function roles for the existing `ICS26Router`/`ICS20Transfer` proxies and the new `ICS27GMP` proxy; copies the role holders from the JSON.
 
-3. Facilitator deploys the four v3 implementations with `just deploy-implementation`, selecting each contract:
+### 3. Deploy the four v3 implementations
 
-   ```text
-   ICS20Transfer
-   ICS26Router
-   Escrow
-   IBCERC20
-   ```
+Run once per contract, selecting each when prompted (`ICS20Transfer`, `ICS26Router`, `Escrow`, `IBCERC20`):
 
-4. Facilitator updates `deployments/<environment>/<chain_id>.json` with the new implementation addresses:
+```bash
+just deploy-implementation
+```
 
-   - `.ics20Transfer.implementation`
-   - `.ics26Router.implementation`
-   - `.ics20Transfer.escrowImplementation`
-   - `.ics20Transfer.ibcERC20Implementation`
+### 4. Record the new implementation addresses
 
-5. Facilitator prepares the SP1 v6.1 light-client migrations in the same branch.
+Update `deployments/<environment>/<chain_id>.json`:
 
-   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state, the v6.1 verification keys, and the v6.1 verifier:
+- `.ics20Transfer.implementation`
+- `.ics26Router.implementation`
+- `.ics20Transfer.escrowImplementation`
+- `.ics20Transfer.ibcERC20Implementation`
 
-   - **Trusted state** (`.trustedClientState` / `.trustedConsensusStateHash`): regenerate it from the proof-api with `just deploy-fresh-light-client-state` (the trusted state is independent of the SP1 program version, so the existing proof-api is fine for this).
-   - **Verification keys** (`.updateClientVkey`, `.membershipVkey`, `.ucAndMembershipVkey`, `.misbehaviourVkey`): set them from the **published `sp1-programs` release** the prover actually loads — do **not** hand-copy the repo's test fixtures, which can be built non-reproducibly and differ from the release:
+### 5. Prepare and deploy the SP1 v6.1 migrations
 
-     ```bash
-     just sp1-vkeys --write <environment> <chain_id> <client_id>...
-     ```
+Same branch, once per client moving to v6.1.
 
-     This downloads the released program ELFs (the exact bytes the deployed prover `wget`s into `/usr/local/bin/sp1-programs/<version>/`) and computes the vkeys from them, so they are guaranteed to match the prover. Override the release with `--version <tag>` (default `v2.0.0-rc.2`). The four vkeys are identical across clients of the same program version.
-   - **Verifier** (`.verifier`): the SP1 v6.1 verifier gateway for the chain (Groth16 or Plonk, matching the client's `zkAlgorithm`). For `mainnet`, `testnet`, and non-default shadow environments it must be an explicit nonzero address; empty `.verifier` and `"mock"` are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia`. Validate it before deploying — including, with `ETH_RPC` set, the on-chain check that the gateway routes v6.1.0 proofs to the real (non-broken) verifier:
+**a. Trusted state** — regenerate from the proof-api (version-independent, so the existing proof-api is fine). Prompts for the client ID:
 
-     ```bash
-     just check-sp1-verifier
-     ```
+```bash
+just deploy-fresh-light-client-state
+```
 
-   Make sure proof generation for the migrated clients runs a proof-api built against this same SP1 v6.1 `sp1-programs` release; the prod relayer-api must be cut over to the matching version **in lockstep** with the on-chain migration (step 7) or the migrated clients' proofs will not verify.
+**b. Verification keys** — set from the published `sp1-programs` release the prover loads, never the repo test fixtures. Downloads the released ELFs (the exact bytes the prover `wget`s) and computes the vkeys, so they match the prover; the four vkeys are identical across clients of the same release. Override the release with `--version <tag>` (default `v2.0.0-rc.2`):
 
-   ```bash
-   just deploy-light-client
-   ```
+```bash
+just sp1-vkeys --write <environment> <chain_id> <client_id>...
+```
 
-   Run this once per upgraded client and provide the client ID when prompted. The script writes the new `.implementation` and (re)confirms `.verifier` in the deployment JSON. Keep the generated addresses in the operation notes.
+**c. Verifier** — set `.verifier` to the SP1 v6.1 gateway for the chain (Groth16 or Plonk, matching the client's `zkAlgorithm`). It must be an explicit nonzero address for `mainnet`/`testnet`/non-default shadow envs (empty or `"mock"` is only allowed for `local`/`shadow-mainnet`/`shadow-sepolia`). Validate before deploying — with `ETH_RPC` set this also checks on-chain that the gateway routes v6.1.0 proofs to the real (non-broken) verifier:
 
-6. Signers verify and schedule all timelocked operations before waiting for the timelock delay.
+```bash
+just check-sp1-verifier
+```
 
-   Schedule the core upgrades:
+**d. Deploy the new SP1 client** — run once per client. It deploys a fresh `SP1ICS07Tendermint` from the JSON's trusted state + vkeys + verifier + merkle prefix, then overwrites that client's `.implementation` and re-confirms `.verifier`. Record the previous and new implementation addresses in the operation notes — the previous one is overwritten in the JSON. Answer the two prompts:
 
-   ```bash
-   just schedule-v3-ics20transfer-upgrade-params <schedule_safe_nonce_1>
-   just schedule-v3-ics26router-upgrade-params <schedule_safe_nonce_2>
-   just schedule-escrow-upgrade-params <schedule_safe_nonce_3>
-   just schedule-ibcerc20-upgrade-params <schedule_safe_nonce_4>
-   ```
+- **`Client ID to deploy (leave empty for a new deployment)`** — enter the **existing** client id (e.g. `hub-testnet-0`); leaving it empty is only for provisioning a brand-new client, not a migration. (`CLIENT_ID=<id>` sets it non-interactively.)
+- **`Deployment address already exists … deploy a copy?`** — type **`y`**: the guard fires because the client already has a deployed implementation, and replacing it with the v6.1 contract is exactly the migration. Any other answer cancels with no deploy. (`SP1_DEPLOY_COPY=true` auto-confirms.)
 
-   The `ICS20Transfer` and `ICS26Router` calls must show `upgradeToAndCall(newImplementation, initializeV2(accessManager))`.
+The router still maps the client id to the OLD implementation until the step-7 `migrateClient` executes, so `just verify-deployment` is expected to fail until then.
 
-   Get the starting Safe nonce from `just get_safe_nonce` or the Safe UI. Use a different Safe nonce for each Safe transaction. For example, if the current nonce is `N`, use `N`, `N+1`, `N+2`, and `N+3` for the four schedule transactions.
+```bash
+just deploy-light-client
+```
 
-   Schedule each SP1 migration while the same timelock window is open:
+**e. Relayer lockstep gate** — the prod proof-api/relayer must be cut over to a build of the same `sp1-programs` release, in lockstep with the migration (step 7). Before scheduling/executing, confirm the running relayer serves the exact programs recorded in the JSON; a mismatch means every migrated client's proofs revert. `SRC_CHAIN` is the proof-api's source (Cosmos) chain id, not the eth-side client id; one call validates all clients (vkeys are program-derived):
 
-   ```bash
-   just schedule-v3-light-client-migration-params <client_id> <schedule_safe_nonce_n>
-   ```
+```bash
+PROOF_API_ADDR=<host:port> SRC_CHAIN=<cosmos_src_chain> DST_CHAIN=<chain_id> just check-relayer-vkeys
+```
 
-   Run this once per upgraded client. This is a calldata-only generator, so it can schedule the v3 `migrateClient(clientId, counterpartyInfo, newImplementation)` call before the `ICS26Router` proxy has been upgraded. Use a unique Safe nonce for every schedule transaction.
+### 6. Schedule all timelocked operations
 
-7. After the timelock delay, execute the whole upgrade as a single atomic Safe MultiSend transaction.
+Each upgrade/migration is scheduled by a Safe transaction that calls `TimelockController.schedule(...)`. The `schedule-v3-*` recipes only **generate** that calldata + the Safe `safeTxHash` (they broadcast nothing); `propose-schedule` signs and posts it to the Safe as a pending tx. An operation is scheduled only once its Safe tx **executes**.
 
-   Before executing, halt packet relaying for this chain and keep it halted until verification passes in step 11.
+**1. Verify the payload first.** `propose-schedule` signs *and* posts in one invocation, so decode the calldata **before** proposing. Run the bare recipe to print its `data:` (the call the timelock will make), and for the `ICS20Transfer`/`ICS26Router` upgrades confirm it decodes to `upgradeToAndCall(newImplementation, initializeV2(accessManager))` — `newImplementation` = the step-4 `.ics20Transfer.implementation` / `.ics26Router.implementation`, inner call `initializeV2` carrying `.accessManager`. The paired `initializeV2` is mandatory: it hands the contract to the shared AccessManager (the router's also deletes the v2 admin records the transfer upgrade authenticates against); without it, authorization breaks.
 
-   ```bash
-   just execute-v3-upgrade-multisend <execute_safe_nonce> <client_id_1> <client_id_2> ...
-   ```
+```bash
+just schedule-v3-ics20transfer-upgrade-params                  # no nonce: prints `data:` (no safeTxHash yet)
+cast decode-calldata 'upgradeToAndCall(address,bytes)' <data>  # -> newImplementation, inner bytes
+cast decode-calldata 'initializeV2(address)' <inner-bytes>     # -> accessManager
+```
 
-   This packs each `TimelockController.execute(...)` call — `ICS20Transfer`, `ICS26Router`, `Escrow`, `IBCERC20`, then one per SP1 client ID (the migrations) — into a `MultiSendCallOnly.multiSend(bytes)` payload and submits it as one Safe transaction with `to` = the canonical MultiSendCallOnly (`0x9641d764fc13c8B624c04430C7356C1C7C8102e2` on mainnet and Sepolia, overridable via `MULTISEND_CALL_ONLY`), `value` = `0`, `operation` = `1` (delegatecall), and `data` = `multiSend(...)`. The Safe delegatecalls MultiSend so each timelock `execute` runs with the Safe as `msg.sender` and passes the `EXECUTOR_ROLE` check. The recipe prints the `to`, `value`, `operation`, `data`, and the `safeTxHash` (computed with `operation = 1`) for signer verification; pass a non-empty nonce to additionally print the per-signer signing hashes.
+**2. Propose each schedule.** Signs the `safeTxHash` with your owner `PRIVATE_KEY` and posts it to the Safe Transaction Service; the nonce is auto-queued so consecutive calls stack into a queue. It prints `auto-nonce: … -> proposing at nonce N` and the `safeTxHash`, and prompts before posting:
 
-   Scheduling is unchanged: each operation is still scheduled individually through the timelock in step 6, and the timelock min-delay still applies before the execute can run — only the execute is atomic (schedule and execute can never share a transaction). The in-batch predecessor still orders the executes (`ICS20Transfer` before `ICS26Router`), and atomicity guarantees all-or-nothing: if any sub-execute reverts, the whole Safe transaction reverts and no upgrade lands. Because the execute is atomic, the contracts never settle into a mixed v2/v3 window — so halting relaying is a brief guard around this single transaction rather than a long window — but still keep relaying halted until `just verify-deployment` passes (step 11) as defense-in-depth, and note that the relayer-role cutover requires the relayer set to be present in `.accessManagerRoles.relayers` before step 2. This path is rehearsed by the shadow-fork timelock rehearsal (the `shadow-v2-to-v3-*-timelock` recipes above) and unit-tested in `test/SafeMultiSendV3Upgrade.t.sol`.
+```bash
+just propose-schedule schedule-v3-ics20transfer-upgrade-params
+just propose-schedule schedule-v3-ics26router-upgrade-params
+just propose-schedule schedule-escrow-upgrade-params
+just propose-schedule schedule-ibcerc20-upgrade-params
+just propose-schedule schedule-v3-light-client-migration-params <client_id>   # once per SP1 client
+```
 
-8. An ID customizer registers the deployed `ICS27GMP` app.
+`PRIVATE_KEY` must be a Safe owner; set `SAFE_API_KEY` if the transaction service requires auth; override the auto nonce with `SAFE_NONCE=<n>`. The migration schedules are calldata-only, so they can be proposed before the `ICS26Router` proxy is upgraded. No CLI access? Build the Safe tx by hand instead: `just get_safe_nonce`, then `just schedule-v3-ics20transfer-upgrade-params <nonce>`, and submit a Safe tx with `to` = the TimelockController (`.accessManagerRoles.admin`), `value` = `0`, `data` = the printed `timelock calldata`. (The `to:`/`data:` above `timelock calldata` are the timelock op's *target* — the proxy — not the Safe tx destination.)
 
-   ```bash
-   just register-ics27-gmp
-   ```
+**3. Each signer independently verifies the `safeTxHash` before approving** — don't simply trust the proposer's printout. Using the queued nonce `N` from the `auto-nonce … nonce N` line, recompute it and confirm it matches both the Safe UI and your signing device:
 
-   This must run after the `ICS26Router` v3 upgrade because `addIBCApp` is now controlled by the AccessManager `ID_CUSTOMIZER_ROLE`.
+```bash
+just schedule-v3-ics20transfer-upgrade-params <N>   # prints the safeTxHash for nonce N
+```
 
-9. Facilitator initializes every existing escrow proxy.
+**4. Execute each** pending Safe tx once it has the threshold's signatures (a 1-of-1 Safe needs only yours). All schedules must be executed before step 7.
 
-    Use the known client IDs from `deployments/<environment>/<chain_id>.json` and any client IDs that have escrow state on-chain.
+Folding steps 10/12 into one round (mainnet)? **First take the step-7 `RATE_LIMITER_ROLE` holder snapshot now** — it's valid here because escrows stay v2 `AccessControl` until the step-7 execute — so you have the `(client_id, rate_limiter)` pairs the grant recipes will prompt for. Then schedule each grant in this window and propose it (these recipes prompt, so they don't go through `propose-schedule`):
 
-    ```bash
-    just initialize-escrow-v2-params <client_id>
-    ```
+```bash
+just timelock-grant-rate-limiter-role schedule <nonce>   # interactive: prompts for client + rate-limiter
+just timelock-grant-role schedule <nonce>                # interactive
+just safe-propose <timelock> <schedule-calldata> <nonce> 0
+```
 
-    To print initialization params for every known deployment JSON client ID that currently has a nonzero escrow address, use:
+Capture each grant's `execute` blob **at the same time, with byte-identical prompt inputs** (run `… execute` right after `… schedule`, save both) — step 7 packs it, and any mismatch with the scheduled op reverts the entire atomic execute.
 
-    ```bash
-    just initialize-known-escrows-v2-params
-    ```
+### 7. Execute the upgrade atomically (after the delay)
 
-    Submit the printed `to` and `data` as a normal transaction. This does not need to go through the timelock unless the operation policy requires it.
+**Before running:** confirm the timelock delay has elapsed and the relayer lockstep gate (step 5e) passed. **Snapshot the current v2 `RATE_LIMITER_ROLE` holders on each live `Escrow` now** — you need them to re-grant in step 10, and this execute flips escrows to the AccessManager authority. The escrows (`ICS20Transfer.getEscrow(<clientId>)`) are plain `AccessControl` (not enumerable), so there's no member list to read: collect every account from the escrow's `RoleGranted` events for `keccak256("RATE_LIMITER_ROLE")` via an explorer's full-range `getLogs` (the public RPC caps `eth_getLogs` at ~50k blocks), then confirm each with `hasRole(role, account)`. If none are configured, step 10 is a no-op. Halt packet relaying now and keep it halted until verification passes (step 11).
 
-10. Facilitator re-grants `RATE_LIMITER_ROLE` to current rate limiters.
+```bash
+just execute-v3-upgrade-multisend <execute_safe_nonce> <client_id_1> <client_id_2> ...
+```
 
-    `deploy-v3-access-manager` does **not** wire any escrow `setRateLimit` target role or grant `RATE_LIMITER_ROLE` (escrows are configured per-escrow, lazily). After the escrow beacon upgrade (step 7) flips escrows to the AccessManager authority, `setRateLimit` defaults to `ADMIN_ROLE`, so every account that held the v2 per-escrow `RATE_LIMITER_ROLE` loses access until it is re-granted. For each `(client_id, rate_limiter)` that must keep rate-limit access, grant it (this wires the escrow's `setRateLimit` selector to `RATE_LIMITER_ROLE` and grants the role):
+Packs each `TimelockController.execute(...)` — `ICS20Transfer`, `ICS26Router`, `Escrow`, `IBCERC20`, then one per SP1 client — into one `MultiSendCallOnly.multiSend(bytes)` Safe transaction (`to` = the canonical MultiSendCallOnly `0x9641d764fc13c8B624c04430C7356C1C7C8102e2` on mainnet/Sepolia, overridable via `MULTISEND_CALL_ONLY`; `value` = `0`; `operation` = `1` delegatecall) and **prints** it — it broadcasts nothing; you propose it via the `safe-propose` step below. The delegatecall runs each `execute` with the Safe as `msg.sender` so it passes the `EXECUTOR_ROLE` check. The recipe prints `to`/`value`/`operation`/`data`/`safeTxHash` (computed with `operation = 1`) for signer verification; pass a non-empty nonce to also print the per-signer signing hashes. Execution is atomic and ordered by the in-batch predecessor (ICS20 before ICS26): if any sub-execute reverts, nothing lands.
 
-    ```bash
-    just timelock-grant-rate-limiter-role schedule
-    just timelock-grant-rate-limiter-role execute <safe_nonce>
-    ```
+**Folding other timelock ops into this one round (mainnet).** A second schedule→delay→execute window is usually impractical on mainnet, so fold the rate-limiter re-grant (step 10) and any role grants (step 12) into *this* atomic execute. Schedule them in the step-6 window too, then add their `execute(...)` calldata via `EXTRA_TIMELOCK_OPS` (`;`-separated). The grant recipes prompt, so they can't run headless inside the packer — generate each once interactively (`just timelock-grant-rate-limiter-role execute` / `just timelock-grant-role execute`), copy its `timelock calldata: 0x…`, and pass the raw blobs:
 
-    Identify the current holders from the live escrows before the upgrade (the v2 `RATE_LIMITER_ROLE` on each `Escrow`). `RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured (see the note above). `verify-deployment` does not assert escrow rate-limit roles, so confirm these grants manually.
+```bash
+EXTRA_TIMELOCK_OPS='0x<rate-limiter-execute>;0x<role-grant-execute>' \
+  just execute-v3-upgrade-multisend <execute_safe_nonce> <client_id_1> <client_id_2> ...
+```
 
-11. Facilitator verifies the deployment.
+Or build the bundle explicitly with `just execute-timelock-multisend <nonce> '<op>;<op>;…'`, where each op is an `execute-*` recipe invocation or a raw `0x` `execute(...)` calldata. Every sub-call must be a timelock `execute()` (the packer rejects anything else), and predecessor-linked ops must keep their order (ICS20 before ICS26).
 
-    ```bash
-    just verify-deployment
-    ```
+A folded grant's `execute` blob must **byte-match its step-6 scheduled op** (identical prompt inputs) **and that schedule must already be executed** — otherwise `timelock.execute` reverts and the whole atomic bundle reverts with it (after the delay, with relaying halted, forcing the very second round you're avoiding). Before packing, confirm each folded op is scheduled and ready: `cast call <timelock> 'isOperationReady(bytes32)(bool)' <opId>` where `opId = hashOperation(<accessManager>,0,<inner-multicall>,0,0)`. Re-verify the `safeTxHash` and decode every sub-call before signing.
 
-    For migrated SP1 clients, also re-run the verifier check on-chain (with `ETH_RPC` set) to confirm each `.verifier` gateway still routes v6.1.0 proofs to the real verifier:
+Propose it as a **DelegateCall** Safe tx (`operation = 1`) at the **same nonce** you printed the hash with — so the hash that gets signed equals the one you verified — then sign and execute it in the Safe UI:
 
-    ```bash
-    just check-sp1-verifier
-    ```
+```bash
+just safe-propose <multisend_to> <multisend_data> <execute_safe_nonce> 1
+```
 
-    Resume packet relaying only after verification passes.
+**Verify before signing (critical for a DelegateCall):** a delegatecall runs the target's code with the Safe as `msg.sender`, so before signing confirm on your device that `to` == the canonical MultiSendCallOnly (`0x9641d764fc13c8B624c04430C7356C1C7C8102e2`, or your `MULTISEND_CALL_ONLY` override) and `operation` == DelegateCall — **reject any other `to`** — and that the `safeTxHash` matches `just execute-v3-upgrade-multisend <execute_safe_nonce> <client_ids>` recomputed at that nonce.
 
-12. If any account needs roles that are not represented in the current deployment JSON, grant them through the `AccessManager` after the upgrade.
+### 8. Register the ICS27GMP app
 
-    ```bash
-    just timelock-grant-role schedule
-    just timelock-grant-role execute <safe_nonce>
-    ```
+Must run after the `ICS26Router` upgrade — `addIBCApp` is now gated by the AccessManager `ID_CUSTOMIZER_ROLE`. An ID customizer runs:
 
-    Known delegate sender integrations should be in `.accessManagerRoles.delegateSenders` before step 2 so they do not lose access during the `ICS20Transfer` upgrade.
+```bash
+just register-ics27-gmp
+```
 
-IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Prefer custom ERC20s through the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.
+### 9. Initialize every existing escrow proxy
+
+Cover all known client IDs in the JSON plus any client IDs with on-chain escrow state. Submit the printed `to`/`data` as a normal transaction (no timelock unless policy requires).
+
+Per client:
+
+```bash
+just initialize-escrow-v2-params <client_id>
+```
+
+Or for every known JSON client ID with a nonzero escrow:
+
+```bash
+just initialize-known-escrows-v2-params
+```
+
+### 10. Re-grant `RATE_LIMITER_ROLE`
+
+> **Mainnet: fold this into the single step-6/7 round** rather than a separate timelock window — schedule it in step 6 and pack its execute into the step-7 MultiSend via `EXTRA_TIMELOCK_OPS` (see step 7). The standalone schedule/execute below is the separate-round form (e.g. a later addition).
+
+`deploy-v3-access-manager` does **not** wire any escrow `setRateLimit` role. After the escrow beacon upgrade (step 7) flips escrows to the AccessManager authority, `setRateLimit` defaults to `ADMIN_ROLE`, so every v2 `RATE_LIMITER_ROLE` holder loses access until re-granted. Use the holder list you snapshotted before executing (step 7). For each `(client_id, rate_limiter)` that must keep access (this wires the escrow's `setRateLimit` selector to `RATE_LIMITER_ROLE` and grants the role):
+
+```bash
+just timelock-grant-rate-limiter-role schedule
+just timelock-grant-rate-limiter-role execute <safe_nonce>
+```
+
+`RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured. `verify-deployment` does not assert these grants — confirm them manually.
+
+### 11. Verify the deployment
+
+```bash
+just verify-deployment
+```
+
+For migrated SP1 clients, re-run the on-chain verifier check (with `ETH_RPC` set) to confirm each `.verifier` gateway still routes v6.1.0 proofs to the real verifier:
+
+```bash
+just check-sp1-verifier
+```
+
+Resume packet relaying only after both pass.
+
+### 12. Grant any remaining roles
+
+> **Mainnet: fold grants needed *at cutover* into the single step-6/7 round** (see step 7); the standalone schedule/execute below is for grants done as a separate, later round.
+
+For accounts that need roles not represented in the deployment JSON, grant them through the AccessManager after the upgrade (known delegate senders should already be in `.accessManagerRoles.delegateSenders` from step 2):
+
+```bash
+just timelock-grant-role schedule
+just timelock-grant-role execute <safe_nonce>
+```
+
+---
+
+> IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Use the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.

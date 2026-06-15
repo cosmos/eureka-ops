@@ -2,6 +2,7 @@
 cache/
 out/
 soljson-latest.js
+__pycache__/
 
 # Ignores development broadcast logs
 !/broadcast

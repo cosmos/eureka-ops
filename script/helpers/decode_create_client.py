@@ -22,7 +22,8 @@ bytes, which is always 0x100 (256). We scan for the unique start offset whose in
 length closure are self-consistent, so the result is independent of the contract/compiler version.
 
 Usage: decode_create_client.py <0x-calldata>   (or pass via the CALLDATA env var)
-Prints JSON: {"trustedClientState": "0x..", "trustedConsensusStateHash": "0x.."}
+Prints JSON with the decoded constructor args: the four vkeys (updateClientVkey, membershipVkey,
+ucAndMembershipVkey, misbehaviourVkey), sp1Verifier, trustedClientState, trustedConsensusStateHash, roleManager.
 """
 import json
 import os
@@ -66,23 +67,39 @@ def decode(calldata_hex):
         if data_start + _roundup32(client_len) != n:
             continue
         client_state = cd[data_start:data_start + client_len]
-        consensus_hash = cd[p + 6 * WORD: p + 7 * WORD]
-        candidates.append((client_state, consensus_hash))
+        candidates.append((p, client_state))
 
     if not candidates:
         raise ValueError("could not locate constructor args in calldata (unexpected CreateClient response)")
     if len(candidates) > 1:
         raise ValueError(f"ambiguous decode: found {len(candidates)} candidate arg layouts")
-    client_state, consensus_hash = candidates[0]
-    return "0x" + client_state.hex(), "0x" + consensus_hash.hex()
+    p, client_state = candidates[0]
+
+    def word(i):
+        return cd[p + i * WORD: p + (i + 1) * WORD]
+
+    def addr(i):  # low 20 bytes of the i-th head word (an address arg)
+        return cd[p + i * WORD + 12: p + (i + 1) * WORD]
+
+    # Constructor head (see module docstring): vkeys are args 0-3, sp1Verifier arg 4, consensus-state hash
+    # arg 6, roleManager arg 7. arg 5 (clientState) is the dynamic bytes captured above.
+    return {
+        "updateClientVkey": "0x" + word(0).hex(),
+        "membershipVkey": "0x" + word(1).hex(),
+        "ucAndMembershipVkey": "0x" + word(2).hex(),
+        "misbehaviourVkey": "0x" + word(3).hex(),
+        "sp1Verifier": "0x" + addr(4).hex(),
+        "trustedClientState": "0x" + client_state.hex(),
+        "trustedConsensusStateHash": "0x" + word(6).hex(),
+        "roleManager": "0x" + addr(7).hex(),
+    }
 
 
 def main():
     calldata = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("CALLDATA", "")
     if not calldata:
         sys.exit("usage: decode_create_client.py <0x-calldata>  (or set CALLDATA)")
-    client_state, consensus_hash = decode(calldata)
-    print(json.dumps({"trustedClientState": client_state, "trustedConsensusStateHash": consensus_hash}))
+    print(json.dumps(decode(calldata)))
 
 
 if __name__ == "__main__":

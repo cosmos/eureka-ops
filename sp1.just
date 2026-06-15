@@ -14,3 +14,10 @@ check-sp1-verifier *args:
     #!/bin/bash
     set -euo pipefail
     bash scripts/check-sp1-verifier.sh {{args}}
+
+[group('sp1')]
+[doc('Verify the RUNNING proof-api/relayer (PROOF_API_ADDR, SRC_CHAIN, DST_CHAIN) is serving the SP1 programs whose vkeys are in deployments/{{environment}}/{{chain}}.json -- the end-to-end check that the deployed relayer loaded the released programs, which `sp1-vkeys` (ELF hashing only) cannot give. Requires grpcurl. See scripts/check-relayer-vkeys.sh.')]
+check-relayer-vkeys *args:
+    #!/bin/bash
+    set -euo pipefail
+    bash scripts/check-relayer-vkeys.sh {{args}}

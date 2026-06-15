@@ -79,20 +79,54 @@ get_safe_hashes nonce data to:
   echo "Message hash: $message_hash"
   echo "safeTxHash: $tx_hash"
 
-# Builds a single Safe MultiSend bundling the whole v3 upgrade as one atomic Safe transaction.
+[group('safe_helpers')]
+[doc('PROPOSE (not execute) a Safe tx to the Safe Transaction Service so it appears in the Safe UI to sign/execute. Signs the safeTxHash with PRIVATE_KEY (must be a Safe owner); operation 0=Call, 1=DelegateCall. Nonce is auto-queried when omitted. Nothing is broadcast. See scripts/safe-propose.sh (supports --dry-run).')]
+safe-propose to data nonce="" operation="0":
+    #!/bin/bash
+    set -euo pipefail
+    nonce_arg=""
+    [ -n "{{nonce}}" ] && nonce_arg="--nonce {{nonce}}"
+    bash scripts/safe-propose.sh --to {{to}} --data {{data}} $nonce_arg --operation {{operation}}
+
+[group('safe_helpers')]
+[doc('Propose a timelock schedule(...) straight from a schedule-v3-* recipe: runs the recipe to get its `timelock calldata`, then proposes it to the Safe. The nonce is auto-queued (consecutive across calls; override with SAFE_NONCE). e.g. `just propose-schedule schedule-v3-ics20transfer-upgrade-params` or `just propose-schedule schedule-v3-light-client-migration-params hub-testnet-0`.')]
+propose-schedule recipe *recipe_args:
+    #!/bin/bash
+    set -euo pipefail
+    timelock=$(jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)" deployments/{{environment}}/{{chain}}.json)
+    if ! out=$({{just}} {{recipe}} {{recipe_args}} ""); then
+      echo "recipe failed: just {{recipe}} {{recipe_args}}" >&2
+      printf '%s\n' "$out" >&2
+      exit 1
+    fi
+    data=$(printf '%s\n' "$out" | sed -n 's/^timelock calldata: //p')
+    if [ -z "$data" ]; then
+      echo "no 'timelock calldata:' line from: just {{recipe}} {{recipe_args}}" >&2
+      printf '%s\n' "$out" >&2
+      exit 1
+    fi
+    nonce_arg=""
+    [ -n "${SAFE_NONCE:-}" ] && nonce_arg="--nonce ${SAFE_NONCE}"
+    bash scripts/safe-propose.sh --to "$timelock" --data "$data" $nonce_arg --operation 0 --origin "{{recipe}} {{recipe_args}}"
+
+# Packs an arbitrary list of already-scheduled TimelockController operations into ONE atomic Safe MultiSend
+# (MultiSendCallOnly.multiSend via DelegateCall). Every sub-call is a `timelock.execute(...)` targeting the
+# TimelockController, so the Safe (which holds EXECUTOR_ROLE) is the msg.sender of each execute. Atomicity gives
+# all-or-nothing; an in-batch timelock predecessor (e.g. ICS20 before ICS26) is satisfied as long as the
+# dependency's sub-tx precedes the dependent's -- so ORDER MATTERS for predecessor-linked ops.
 #
-# It collects the per-operation TimelockController.execute calldata from the existing execute-v3-* recipes
-# (in the order the timelock must run them: ICS20Transfer, ICS26Router, then the Escrow / IBCERC20 beacons,
-# then one per SP1 client_id), packs them as MultiSend sub-transactions all targeting the timelock, and wraps
-# them in MultiSendCallOnly.multiSend(bytes). The Safe must execute this via DelegateCall (operation=1) so the
-# msg.sender of every timelock.execute() stays the Safe (which holds EXECUTOR_ROLE). Because the timelock marks
-# an op Done at the end of its own execute(), the in-batch predecessor (ICS20 before ICS26) is satisfied as long
-# as ICS20's sub-tx precedes ICS26's — which it does here.
+# `ops` is a ';'-separated list; each item is either:
+#   - an execute-* recipe invocation to run -- it must print a `timelock calldata: 0x...` line -- e.g.
+#     `execute-v3-ics20transfer-upgrade-params` or `execute-v3-light-client-migration-params hub-testnet-0`; or
+#   - a raw `0x...` execute(...) calldata, for ops captured out-of-band (e.g. the interactive
+#     `timelock-grant-rate-limiter-role execute` / `timelock-grant-role execute` recipes, whose `timelock
+#     calldata:` you generate once and paste in -- they prompt, so they can't be run headless inside the packer).
+# Each packed sub-tx is validated to be a timelock `execute(...)` call (selector 0x134008d3).
 #
-# With an empty nonce it prints only the machine-greppable `multisend *` lines (safeTxHash uses the Safe's
-# current on-chain nonce). With a non-empty nonce it also prints the signer hashes for that Safe tx.
+# Empty nonce -> safeTxHash uses the Safe's current on-chain nonce and only the machine-greppable `multisend *`
+# lines print; a non-empty nonce also prints the signer hashes. Propose with: just safe-propose <to> <data> <nonce> 1
 [group('upgrade-params')]
-execute-v3-upgrade-multisend nonce *client_ids:
+execute-timelock-multisend nonce ops:
     #!/bin/bash
     set -euo pipefail
     deployment=$(cat deployments/{{environment}}/{{chain}}.json)
@@ -106,52 +140,51 @@ execute-v3-upgrade-multisend nonce *client_ids:
     fi
     value_hex=$(printf '%064x' 0)
 
-    # Run an execute-v3-* recipe with an empty nonce and pull out the "timelock calldata: 0x..." line it prints.
-    extract_calldata() {
-      local out
-      if ! out=$({{just}} "$@"); then
-        echo "recipe failed: just $*" >&2
-        printf '%s\n' "${out:-}" >&2
-        exit 1
-      fi
-      local data
-      data=$(printf '%s\n' "$out" | sed -n 's/^timelock calldata: //p')
-      if [ -z "$data" ]; then
-        echo "could not find 'timelock calldata:' in output of: just $*" >&2
-        printf '%s\n' "$out" >&2
-        exit 1
-      fi
-      printf '%s\n' "$data"
-    }
-
-    # Append one MultiSend sub-tx: operation(00) + to(20) + value(32) + dataLength(32) + data.
-    # Takes the execute-v3-* recipe (+ args) and packs the calldata it prints. extract_calldata is run as a
-    # standalone assignment INSIDE this function -- not as `append_subtx "$(extract_calldata ...)"` -- so that a
-    # recipe failure trips `set -e` and aborts the whole bundle. In the argument-list form the failing $(...)
-    # exit status is discarded, the substitution expands to empty, and a zero-length no-op sub-tx gets packed,
-    # silently dropping that operation from a MultiSend the operator then signs and submits as "complete".
+    # Pack one validated timelock.execute(...) calldata as a MultiSend sub-tx: operation(00) + to(20) + value(32)
+    # + dataLength(32) + data. Rejects anything that is not a timelock execute() call (selector 0x134008d3).
     packed=""
-    append_subtx() {
-      local data
-      data=$(extract_calldata "$@")
-      local data_hex="${data#0x}"
-      if [ -z "$data_hex" ]; then
-        echo "refusing to pack an empty sub-transaction for: just $*" >&2
+    pack_data() {
+      local data_hex="${1#0x}"
+      if [ -z "$data_hex" ]; then echo "refusing to pack an empty sub-transaction" >&2; exit 1; fi
+      if [ "$(printf '%s' "${data_hex:0:8}" | tr 'A-Z' 'a-z')" != "134008d3" ]; then
+        echo "sub-tx is not a timelock execute(...) call (selector 0x${data_hex:0:8}); refusing to pack" >&2
         exit 1
       fi
       local len=$(( ${#data_hex} / 2 ))
-      local len_hex
-      len_hex=$(printf '%064x' "$len")
-      packed="${packed}00${timelock_hex}${value_hex}${len_hex}${data_hex}"
+      packed="${packed}00${timelock_hex}${value_hex}$(printf '%064x' "$len")${data_hex}"
     }
 
-    append_subtx execute-v3-ics20transfer-upgrade-params ""
-    append_subtx execute-v3-ics26router-upgrade-params ""
-    append_subtx execute-escrow-upgrade-params ""
-    append_subtx execute-ibcerc20-upgrade-params ""
-    for cid in {{client_ids}}; do
-      append_subtx execute-v3-light-client-migration-params "$cid" ""
+    # Run an execute-* recipe and pull out its "timelock calldata: 0x..." line, then pack it. The `if ! out=$(...)`
+    # form makes a recipe failure trip `set -e` and abort the whole bundle -- an arg-list `$(...)` would discard
+    # the failure and pack a zero-length no-op, silently dropping that op from a MultiSend the operator then signs
+    # and submits as "complete".
+    append_recipe() {
+      local out
+      if ! out=$({{just}} "$@"); then echo "recipe failed: just $*" >&2; printf '%s\n' "${out:-}" >&2; exit 1; fi
+      local d
+      d=$(printf '%s\n' "$out" | sed -n 's/^timelock calldata: //p')
+      if [ -z "$d" ]; then echo "could not find 'timelock calldata:' in output of: just $*" >&2; printf '%s\n' "$out" >&2; exit 1; fi
+      pack_data "$d"
+    }
+
+    IFS=';' read -ra _ops <<< "{{ops}}"
+    # "${_ops[@]:-}" (not "${_ops[@]}") so an empty list doesn't trip set -u on bash 3.2; it falls through to the
+    # "no ops to pack" guard below instead of an unbound-variable error. `set -f` disables pathname (glob)
+    # expansion so the intentional word-splitting of `append_recipe $op` can't be mangled by a glob char in an
+    # op token matching a file in the working dir.
+    set -f
+    for raw in "${_ops[@]:-}"; do
+      op=$(printf '%s' "$raw" | awk '{$1=$1};1')   # trim leading/trailing whitespace
+      [ -z "$op" ] && continue
+      if [ "${op:0:2}" = "0x" ]; then
+        pack_data "$op"
+      else
+        # shellcheck disable=SC2086
+        append_recipe $op
+      fi
     done
+    set +f
+    [ -n "$packed" ] || { echo "no ops to pack (empty ops list)" >&2; exit 1; }
 
     multisend_data=$({{cast_binary}} calldata "multiSend(bytes)" "0x${packed}")
 
@@ -176,3 +209,19 @@ execute-v3-upgrade-multisend nonce *client_ids:
       echo "Message hash: $message_hash"
       echo "safeTxHash: $safe_tx_hash"
     fi
+
+# The v3 upgrade as the default op set for execute-timelock-multisend: ICS20Transfer, ICS26Router, the Escrow /
+# IBCERC20 beacons, then one migration per SP1 client_id -- in the order the timelock predecessor requires (ICS20
+# before ICS26). Set EXTRA_TIMELOCK_OPS (';'-separated, same format as execute-timelock-multisend's `ops`) to fold
+# additional already-scheduled ops -- e.g. rate-limiter or role grants -- into the SAME atomic execute instead of
+# a second timelock round.
+[group('upgrade-params')]
+execute-v3-upgrade-multisend nonce *client_ids:
+    #!/bin/bash
+    set -euo pipefail
+    ops="execute-v3-ics20transfer-upgrade-params;execute-v3-ics26router-upgrade-params;execute-escrow-upgrade-params;execute-ibcerc20-upgrade-params"
+    for cid in {{client_ids}}; do
+      ops="${ops};execute-v3-light-client-migration-params ${cid}"
+    done
+    [ -n "${EXTRA_TIMELOCK_OPS:-}" ] && ops="${ops};${EXTRA_TIMELOCK_OPS}"
+    {{just}} execute-timelock-multisend "{{nonce}}" "$ops"
