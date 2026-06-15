@@ -21,12 +21,13 @@ set -euo pipefail
 # Requires an already-running Anvil fork of the (still-v2) chain, started with --auto-impersonate, e.g.
 #   just shadow-start-sepolia
 #
-# Usage: SAFE_ADDRESS=0x... [SP1_CLIENT_IDS=a,b,c] scripts/shadow-v2-to-v3-timelock-rehearsal.sh \
+# Usage: [SP1_CLIENT_IDS=a,b,c] scripts/shadow-v2-to-v3-timelock-rehearsal.sh \
 #          <chain-id> <source-env> <shadow-env> <fork-rpc>
 #
 # Env:
-#   SAFE_ADDRESS                 (required) the Safe that holds PROPOSER/EXECUTOR on the timelock; impersonated.
-#   SP1_CLIENT_IDS               (optional) comma-separated client ids to also deploy + migrate.
+#   (The proposer/executor Safe is read from the deployment JSON's `.safe` key and impersonated on the fork.)
+#   SP1_CLIENT_IDS               (optional) comma-separated client ids to deploy + migrate. Defaults to every
+#                                clientId in the shadow deployment JSON; set this to migrate only a subset.
 #   SHADOW_FORK_PRESERVE_DEPLOYMENT=1   reuse an already-prepared shadow JSON instead of copying the source.
 #   SHADOW_FORK_DEPLOYER         (optional) funded EOA used to broadcast deploys (default: anvil account 0).
 #   SHADOW_FORK_BALANCE_WEI      (optional) balance set on impersonated accounts (default: 100 ether).
@@ -48,11 +49,6 @@ fork_rpc="$4"
 
 if [[ "$shadow_env" != shadow-* ]]; then
   echo "shadow-env must start with 'shadow-' (got '$shadow_env') so real deployment files are not overwritten" >&2
-  exit 1
-fi
-
-if [ -z "${SAFE_ADDRESS:-}" ]; then
-  echo "SAFE_ADDRESS must be set to the Safe that holds PROPOSER/EXECUTOR on the timelock." >&2
   exit 1
 fi
 
@@ -87,6 +83,12 @@ else
   cp "$source_file" "$shadow_file"
 fi
 
+# Default the SP1 client ids to every client recorded in the shadow JSON; set SP1_CLIENT_IDS to override the set
+# (e.g. a subset). The shadow JSON is the single source of truth for which clients get migrated.
+if [ -z "$sp1_client_ids" ]; then
+  sp1_client_ids="$(jq -r '[.light_clients[].clientId // empty] | join(",")' "$shadow_file")"
+fi
+
 # These exports make the `just` recipes operate on the shadow env / fork. Process env overrides .eureka-env.
 export DEPLOYMENT_ENV="$shadow_env"
 export EUREKA_ENVIRONMENT="$shadow_env"
@@ -110,7 +112,12 @@ cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$deployer" "$balance" >/dev/nul
 timelock="$(jq -re '(.accessManagerRoles.admin // .ics26Router.timelockAdmin)' "$shadow_file")"
 id_customizer="$(jq -re '(.accessManagerRoles.idCustomizers[0] // .ics26Router.clientIdCustomizer // .ics26Router.portCustomizer)' "$shadow_file")"
 ics20_proxy="$(jq -re '.ics20Transfer.proxy' "$shadow_file")"
-safe="$SAFE_ADDRESS"
+# The proposer/executor Safe comes from the deployment JSON (.safe), the same source the just recipes read.
+safe="$(jq -re '.safe' "$shadow_file")"
+if [ "$safe" = "0x0000000000000000000000000000000000000000" ]; then
+  echo "no proposer Safe configured in $shadow_file (.safe is the zero address)" >&2
+  exit 1
+fi
 
 echo "==> Timelock: $timelock"
 echo "==> Proposer Safe (impersonated): $safe"
@@ -144,6 +151,10 @@ recipe_calldata() {
 # Submit timelock calldata as the proposer Safe; aborts on failure.
 submit() {
   local data="$1" label="$2"
+  if [ -z "$data" ] || [ "$data" = "0x" ]; then
+    echo "refusing to submit empty calldata for: $label (a recipe likely failed)" >&2
+    exit 1
+  fi
   echo "    submit: $label"
   if ! cast send "$timelock" --data "$data" --from "$safe" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
     echo "FAILED to submit: $label" >&2
@@ -151,14 +162,46 @@ submit() {
   fi
 }
 
-# Submit timelock calldata expected to revert (used for the ordering assertion).
+# Submit timelock calldata expected to revert with the timelock's predecessor guard (the ordering assertion).
+# A bare non-zero exit is NOT proof of ordering: an RPC/gas error, or a wrong-salt / wrong-predecessor revert
+# from a buggy recipe (the very artifact this step exists to validate), would otherwise be mistaken for
+# "ordering enforced". So require the revert to carry OZ TimelockController's TimelockUnexecutedPredecessor
+# error and fail loudly on a revert for any other reason. (All ops are scheduled and the delay has passed
+# before this runs, so the op is Ready and the unmet predecessor -- not a not-ready state -- is the trigger.)
 submit_expect_revert() {
   local data="$1" label="$2"
-  if cast send "$timelock" --data "$data" --from "$safe" --unlocked --rpc-url "$fork_rpc" >/dev/null 2>&1; then
-    echo "FAIL: $label was expected to revert (predecessor not met) but succeeded" >&2
+  if [ -z "$data" ] || [ "$data" = "0x" ]; then
+    echo "refusing to run the ordering assertion with empty calldata for: $label (a recipe likely failed)" >&2
     exit 1
   fi
-  echo "    ok: $label reverted as expected — timelock ordering is enforced"
+
+  # Computed (not hardcoded) so it tracks the OZ error signature: if a dep bump renames the error, the on-chain
+  # selector stops matching and this assertion fails loudly rather than silently passing on the wrong revert.
+  local expected_sig="TimelockUnexecutedPredecessor(bytes32)"
+  local expected_selector
+  expected_selector="$(cast sig "$expected_sig")"
+  if [ -z "$expected_selector" ] || [ "$expected_selector" = "0x" ]; then
+    echo "could not compute the selector for $expected_sig via 'cast sig'" >&2
+    exit 1
+  fi
+
+  # Capture combined output. The `if` condition keeps `set -e` from aborting on the (expected) non-zero exit;
+  # cast surfaces the revert data (containing the custom-error selector) when anvil rejects the tx.
+  local out
+  if out="$(cast send "$timelock" --data "$data" --from "$safe" --unlocked --rpc-url "$fork_rpc" 2>&1)"; then
+    echo "FAIL: $label was expected to revert (predecessor not met) but SUCCEEDED -- timelock ordering is NOT enforced" >&2
+    exit 1
+  fi
+
+  if printf '%s' "$out" | grep -qiE "${expected_selector#0x}|TimelockUnexecutedPredecessor"; then
+    echo "    ok: $label reverted with $expected_sig — timelock ordering is enforced"
+  else
+    echo "FAIL: $label reverted, but NOT with the expected predecessor guard ($expected_sig)." >&2
+    echo "      A revert for any other reason (RPC/gas error, or a buggy recipe) does not prove ordering -- aborting." >&2
+    echo "      cast output was:" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
 }
 
 # Iterate SP1 client ids (comma-separated), bash-3.2 safe.
@@ -316,12 +359,21 @@ execute_atomic() {
 # 2. Schedule every timelocked operation.
 # ---------------------------------------------------------------------------
 echo "==> Scheduling timelock operations"
-submit "$(recipe_calldata schedule-v3-ics20transfer-upgrade-params)" "schedule ICS20Transfer upgrade"
-submit "$(recipe_calldata schedule-v3-ics26router-upgrade-params)" "schedule ICS26Router upgrade (predecessor=ICS20)"
-submit "$(recipe_calldata schedule-escrow-upgrade-params)" "schedule Escrow beacon upgrade"
-submit "$(recipe_calldata schedule-ibcerc20-upgrade-params)" "schedule IBCERC20 beacon upgrade"
+# Capture each recipe's calldata into a variable BEFORE calling submit. A standalone assignment makes a recipe
+# failure trip `set -e`; `submit "$(recipe_calldata ...)"` would not -- the $(...) exit status is discarded in an
+# argument list, so a failed recipe would expand to empty and submit a no-op to the timelock, silently skipping
+# a step (the later atomic execute then reverts with a misleading root cause).
+data="$(recipe_calldata schedule-v3-ics20transfer-upgrade-params)"
+submit "$data" "schedule ICS20Transfer upgrade"
+data="$(recipe_calldata schedule-v3-ics26router-upgrade-params)"
+submit "$data" "schedule ICS26Router upgrade (predecessor=ICS20)"
+data="$(recipe_calldata schedule-escrow-upgrade-params)"
+submit "$data" "schedule Escrow beacon upgrade"
+data="$(recipe_calldata schedule-ibcerc20-upgrade-params)"
+submit "$data" "schedule IBCERC20 beacon upgrade"
 while IFS= read -r cid; do
-  submit "$(recipe_calldata schedule-v3-light-client-migration-params "$cid")" "schedule migration $cid"
+  data="$(recipe_calldata schedule-v3-light-client-migration-params "$cid")"
+  submit "$data" "schedule migration $cid"
 done < <(sp1_ids)
 
 # ---------------------------------------------------------------------------
@@ -336,7 +388,8 @@ cast rpc --rpc-url "$fork_rpc" evm_mine >/dev/null
 # 4. Prove the ordering guard, then execute in the correct order.
 # ---------------------------------------------------------------------------
 echo "==> Asserting ICS26Router upgrade cannot execute before ICS20Transfer upgrade"
-submit_expect_revert "$(recipe_calldata execute-v3-ics26router-upgrade-params)" "execute ICS26Router before ICS20Transfer"
+data="$(recipe_calldata execute-v3-ics26router-upgrade-params)"
+submit_expect_revert "$data" "execute ICS26Router before ICS20Transfer"
 
 # The whole upgrade runs as ONE atomic Safe MultiSend execTransaction through the real Safe.
 echo "==> Executing the v3 upgrade atomically via a single Safe MultiSend execTransaction"

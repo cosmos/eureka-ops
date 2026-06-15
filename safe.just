@@ -1,4 +1,8 @@
-safe_address := env_var_or_default("SAFE_ADDRESS", "0x7B96CD54aA750EF83ca90eA487e0bA321707559a")
+# Proposer/executor Safe for the configured environment+chain, read from deployments/<env>/<chain>.json (.safe).
+# Stored per-deployment (not an env var) so the signer-facing Safe hashes can never be computed against the wrong
+# Safe. Empty when environment/chain are unset (keeps `just --list` working); fails loudly when the file or the
+# .safe key is missing rather than silently falling back to a default Safe.
+safe_address := shell('if [ -z "$1" ] || [ -z "$2" ]; then echo ""; exit 0; fi; f="deployments/$1/$2.json"; test -f "$f" || { echo "safe lookup failed: $f not found" >&2; exit 1; }; jq -re ".safe" "$f" || { echo "safe address (.safe) not set in $f" >&2; exit 1; }', environment, chain)
 eip712_separator_typehash := "0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218"
 safe_tx_typehash := "0xbb8310d486368db6bd6f849402fdd73ad53d316b5a4b2644ad6efe0f941286d8"
 zero_address := "0x0000000000000000000000000000000000000000"
@@ -121,21 +125,32 @@ execute-v3-upgrade-multisend nonce *client_ids:
     }
 
     # Append one MultiSend sub-tx: operation(00) + to(20) + value(32) + dataLength(32) + data.
+    # Takes the execute-v3-* recipe (+ args) and packs the calldata it prints. extract_calldata is run as a
+    # standalone assignment INSIDE this function -- not as `append_subtx "$(extract_calldata ...)"` -- so that a
+    # recipe failure trips `set -e` and aborts the whole bundle. In the argument-list form the failing $(...)
+    # exit status is discarded, the substitution expands to empty, and a zero-length no-op sub-tx gets packed,
+    # silently dropping that operation from a MultiSend the operator then signs and submits as "complete".
     packed=""
     append_subtx() {
-      local data_hex="${1#0x}"
+      local data
+      data=$(extract_calldata "$@")
+      local data_hex="${data#0x}"
+      if [ -z "$data_hex" ]; then
+        echo "refusing to pack an empty sub-transaction for: just $*" >&2
+        exit 1
+      fi
       local len=$(( ${#data_hex} / 2 ))
       local len_hex
       len_hex=$(printf '%064x' "$len")
       packed="${packed}00${timelock_hex}${value_hex}${len_hex}${data_hex}"
     }
 
-    append_subtx "$(extract_calldata execute-v3-ics20transfer-upgrade-params "")"
-    append_subtx "$(extract_calldata execute-v3-ics26router-upgrade-params "")"
-    append_subtx "$(extract_calldata execute-escrow-upgrade-params "")"
-    append_subtx "$(extract_calldata execute-ibcerc20-upgrade-params "")"
+    append_subtx execute-v3-ics20transfer-upgrade-params ""
+    append_subtx execute-v3-ics26router-upgrade-params ""
+    append_subtx execute-escrow-upgrade-params ""
+    append_subtx execute-ibcerc20-upgrade-params ""
     for cid in {{client_ids}}; do
-      append_subtx "$(extract_calldata execute-v3-light-client-migration-params "$cid" "")"
+      append_subtx execute-v3-light-client-migration-params "$cid" ""
     done
 
     multisend_data=$({{cast_binary}} calldata "multiSend(bytes)" "0x${packed}")

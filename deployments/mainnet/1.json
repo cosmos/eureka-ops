@@ -35,6 +35,7 @@
       "0x47a4b9F949E98a49Be500753c19a8f9c9d6b7689"
     ]
   },
+  "safe": "0x7B96CD54aA750EF83ca90eA487e0bA321707559a",
   "accessManager": "0x0000000000000000000000000000000000000000",
   "accessManagerRoles": {
     "admin": "0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614",

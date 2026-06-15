@@ -34,7 +34,7 @@ just shadow-start-sepolia
 Then run the rehearsal in another terminal:
 
 ```bash
-just shadow-v2-to-v3-sepolia
+just shadow-v2-to-v3-sepolia-with-sp1
 ```
 
 For Ethereum mainnet, use:
@@ -47,42 +47,30 @@ just shadow-start-mainnet
 Then, in another terminal:
 
 ```bash
-just shadow-v2-to-v3-mainnet
+just shadow-v2-to-v3-mainnet-with-sp1
 ```
 
-The generic form is `just shadow-v2-to-v3 <chain_id> <source_env> <shadow_env> <port>`, which is useful for non-default environments. The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` environment, deploys the v3 `AccessManager`, ICS27, and implementations, impersonates `.accessManagerRoles.admin` on the fork to run the upgrades, registers ICS27 through an ID customizer, initializes known escrows, and runs deployment verification. Restart the Anvil fork before each fresh rehearsal.
+The generic form is `just shadow-v2-to-v3-with-sp1 <chain_id> <source_env> <shadow_env> <port>`, which is useful for non-default environments. The rehearsal copies the real deployment JSON into an ignored `deployments/shadow-*` environment, deploys the v3 `AccessManager`, ICS27, and implementations, impersonates `.accessManagerRoles.admin` on the fork to run the upgrades, deploys and migrates the SP1 light clients, registers ICS27 through an ID customizer, initializes known escrows, and runs deployment verification. Restart the Anvil fork before each fresh rehearsal.
 
-The plain `shadow-v2-to-v3-*` recipes are a core v2-to-v3 rehearsal; they assert that no light client was migrated, so a stale `.implementation` in the shadow JSON fails the rehearsal instead of migrating a client silently. For a proper combined v2-to-v3 plus SP1 rehearsal, preserve a prepared shadow deployment JSON:
+The SP1 clients to deploy and migrate default to every `clientId` in the deployment JSON, and the rehearsal derives the expected migration count from that list and fails if the on-fork migration count does not match — so it cannot silently pass as a core-only upgrade. To rehearse only a subset, pass an explicit comma-separated list as the final argument of the generic recipe.
+
+To rehearse against staged SP1 v6.1 state that is not yet committed to the source deployment JSON, prepare a shadow copy and run the preserve recipe instead:
 
 ```bash
 just shadow-copy-deployment <chain_id> <source_env> <shadow_env>
+# edit deployments/<shadow_env>/<chain_id>.json with the planned SP1 v6.1 trusted state and verification keys
+just shadow-v2-to-v3-preserve <chain_id> <source_env> <shadow_env> <port> <expected_migrations> <comma_separated_sp1_client_ids>
 ```
-
-Update `deployments/<shadow_env>/<chain_id>.json` with the planned SP1 v6.1 trusted state and verification keys. Then run the full combined shadow test without overwriting the prepared shadow JSON. The shadow script deploys each named SP1 client into the fork, deploys the v3 core contracts, runs the v2-to-v3 upgrade, migrates those SP1 clients, and fails if the number of migrations does not match the provided client list.
-
-```bash
-just shadow-v2-to-v3-with-sp1 <chain_id> <source_env> <shadow_env> <port> <comma_separated_sp1_client_ids>
-```
-
-For example:
-
-```bash
-just shadow-v2-to-v3-sepolia-with-sp1 hub-testnet-0,ledger-testnet-1,ledger-testnet-2
-```
-
-The `with-sp1` recipe derives the expected migration count from the client-id list, so the rehearsal cannot silently pass as a core-only upgrade. Treat this recipe as the required shadow rehearsal for the combined operation.
 
 ### Timelock rehearsal (real schedule/execute path)
 
-The `shadow-v2-to-v3*` recipes above impersonate the AccessManager admin and call the proxies directly, so they validate the v2→v3 contract mechanics but not the timelock layer. To additionally exercise the production path — the `schedule-v3-*` / `execute-v3-*` recipe calldata submitted through the real `TimelockController`, including the predecessor that enforces ICS20-before-ICS26 ordering — run the timelock rehearsal against a running fork:
+The `shadow-v2-to-v3-*-with-sp1` recipes above impersonate the AccessManager admin and call the proxies directly, so they validate the v2→v3 contract mechanics but not the timelock layer. To additionally exercise the production path — the `schedule-v3-*` / `execute-v3-*` recipe calldata submitted through the real `TimelockController`, including the predecessor that enforces ICS20-before-ICS26 ordering — run the timelock rehearsal against a running fork:
 
 ```bash
-SAFE_ADDRESS=<safe that holds PROPOSER/EXECUTOR on the timelock> \
-SP1_CLIENT_IDS=hub-testnet-0,ledger-testnet-1 \
 just shadow-v2-to-v3-sepolia-timelock
 ```
 
-It deploys the v3 stack (leaving the fork's proxies on v2), then for each operation generates the recipe calldata, submits it to the timelock by impersonating the Safe, advances the fork past `getMinDelay()`, asserts that executing the ICS26Router upgrade before the ICS20Transfer upgrade reverts, executes the upgrades and SP1 migrations in order, registers ICS27, initializes escrows, and runs `verify-deployment`. `SP1_CLIENT_IDS` is optional (omit for a core-only timelock rehearsal). The mainnet form is `just shadow-v2-to-v3-mainnet-timelock`.
+The proposer/executor Safe and the SP1 client ids are both read from the deployment JSON (no `SAFE_ADDRESS` or `SP1_CLIENT_IDS` env var needed; set `SP1_CLIENT_IDS` to migrate only a subset). It deploys the v3 stack (leaving the fork's proxies on v2), then for each operation generates the recipe calldata, submits it to the timelock by impersonating the Safe, advances the fork past `getMinDelay()`, asserts that executing the ICS26Router upgrade before the ICS20Transfer upgrade reverts, executes the upgrades and SP1 migrations in order, registers ICS27, initializes escrows, and runs `verify-deployment`. The mainnet form is `just shadow-v2-to-v3-mainnet-timelock`.
 
 ## Runbook
 
@@ -120,13 +108,29 @@ It deploys the v3 stack (leaving the fork's proxies on v2), then for each operat
 
 5. Facilitator prepares the SP1 v6.1 light-client migrations in the same branch.
 
-   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state and v6.1 verification keys. Verify that the SP1 programs and verification keys were generated with the SP1 v6.1 toolchain before deploying or migrating clients, and make sure the proof generation for the migrated clients runs a proof-api version built against SP1 v6.1. For `mainnet`, `testnet`, and non-default shadow environments, `.verifier` must be an explicit nonzero SP1 v6.1 verifier address. Empty `.verifier` and `"mock"` verifier deployments are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia` rehearsals.
+   For each light client that must move to SP1 v6.1, update its `light_clients` entry with the new trusted state, the v6.1 verification keys, and the v6.1 verifier:
+
+   - **Trusted state** (`.trustedClientState` / `.trustedConsensusStateHash`): regenerate it from the proof-api with `just deploy-fresh-light-client-state` (the trusted state is independent of the SP1 program version, so the existing proof-api is fine for this).
+   - **Verification keys** (`.updateClientVkey`, `.membershipVkey`, `.ucAndMembershipVkey`, `.misbehaviourVkey`): set them from the **published `sp1-programs` release** the prover actually loads — do **not** hand-copy the repo's test fixtures, which can be built non-reproducibly and differ from the release:
+
+     ```bash
+     just sp1-vkeys --write <environment> <chain_id> <client_id>...
+     ```
+
+     This downloads the released program ELFs (the exact bytes the deployed prover `wget`s into `/usr/local/bin/sp1-programs/<version>/`) and computes the vkeys from them, so they are guaranteed to match the prover. Override the release with `--version <tag>` (default `v2.0.0-rc.2`). The four vkeys are identical across clients of the same program version.
+   - **Verifier** (`.verifier`): the SP1 v6.1 verifier gateway for the chain (Groth16 or Plonk, matching the client's `zkAlgorithm`). For `mainnet`, `testnet`, and non-default shadow environments it must be an explicit nonzero address; empty `.verifier` and `"mock"` are only allowed for `local`, `shadow-mainnet`, and `shadow-sepolia`. Validate it before deploying — including, with `ETH_RPC` set, the on-chain check that the gateway routes v6.1.0 proofs to the real (non-broken) verifier:
+
+     ```bash
+     just check-sp1-verifier
+     ```
+
+   Make sure proof generation for the migrated clients runs a proof-api built against this same SP1 v6.1 `sp1-programs` release; the prod relayer-api must be cut over to the matching version **in lockstep** with the on-chain migration (step 7) or the migrated clients' proofs will not verify.
 
    ```bash
    just deploy-light-client
    ```
 
-   Run this once per upgraded client and provide the client ID when prompted. The script writes the new `.implementation` and `.verifier` into the deployment JSON. Keep the generated addresses in the operation notes.
+   Run this once per upgraded client and provide the client ID when prompted. The script writes the new `.implementation` and (re)confirms `.verifier` in the deployment JSON. Keep the generated addresses in the operation notes.
 
 6. Signers verify and schedule all timelocked operations before waiting for the timelock delay.
 
@@ -202,6 +206,12 @@ It deploys the v3 stack (leaving the fork's proxies on v2), then for each operat
 
     ```bash
     just verify-deployment
+    ```
+
+    For migrated SP1 clients, also re-run the verifier check on-chain (with `ETH_RPC` set) to confirm each `.verifier` gateway still routes v6.1.0 proofs to the real verifier:
+
+    ```bash
+    just check-sp1-verifier
     ```
 
     Resume packet relaying only after verification passes.

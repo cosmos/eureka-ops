@@ -49,7 +49,7 @@ To verify that the Ethereum Light on the hub is running a specific version of th
 
 ### Shadow fork v2-to-v3 rehearsal
 
-To test the v2-to-v3 upgrade flow against uncommitted local changes, start an Anvil fork in one terminal:
+To rehearse the v2-to-v3 upgrade (including the SP1 light-client migrations) against uncommitted local changes, start an Anvil fork in one terminal:
 
 ```bash
 export SEPOLIA_RPC=<SEPOLIA_RPC_URL>
@@ -59,10 +59,10 @@ just shadow-start-sepolia
 Then run the rehearsal in another terminal:
 
 ```bash
-just shadow-v2-to-v3-sepolia
+just shadow-v2-to-v3-sepolia-with-sp1
 ```
 
-Use `MAINNET_RPC` with `just shadow-start-mainnet` and `just shadow-v2-to-v3-mainnet` for Ethereum mainnet. For other environments, use `just shadow-v2-to-v3 <chain_id> <source_env> <shadow_env> <port>`. The rehearsal writes only to ignored `deployments/shadow-*` copies.
+The SP1 clients to migrate are read from the deployment JSON (`.light_clients[].clientId`), so there is nothing to type, and the rehearsal writes only to ignored `deployments/shadow-*` copies. Use `MAINNET_RPC` with `just shadow-start-mainnet` and `just shadow-v2-to-v3-mainnet-with-sp1` for Ethereum mainnet. To additionally exercise the real `TimelockController` + atomic Safe MultiSend path, use `just shadow-v2-to-v3-sepolia-timelock`. See [`runbooks/upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md) for the full flow.
 
 ### Fresh v3 core deployment
 

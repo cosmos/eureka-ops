@@ -379,6 +379,20 @@ timelock-grant-role timelock_function nonce="": (_pre-script _timelock_flags) &&
     just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
 
 
+# Revoke an AccessManager role under a TimelockController admin (mirror of timelock-grant-role). ops-revoke-role
+# broadcasts from an EOA and reverts once the AccessManager admin is the timelock, so this is the supported path
+# for incident-response revocation (e.g. yanking a compromised relayer/pauser) in the v3 timelock-admin model.
+[group('timelock')]
+timelock-revoke-role timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params "RevokeRole" timelock_function nonce)
+    #!/bin/bash
+    set -euo pipefail
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to revoke")
+    export REVOKE_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Revoking role $role_key ($REVOKE_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
+    just timelock-script "RevokeRole" {{ timelock_function }} {{ nonce }}
+
+
 [group('timelock')]
 timelock-add-light-client timelock_function nonce="": (timelock-script "AddLightClient" timelock_function nonce)
 
@@ -393,6 +407,12 @@ verify-schedule-grant-role nonce: (timelock-grant-role "schedule" nonce)
 
 [group('verify')]
 verify-execute-grant-role nonce: (timelock-grant-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-revoke-role nonce: (timelock-revoke-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-revoke-role nonce: (timelock-revoke-role "execute" nonce)
 
 [group('verify')]
 verify-schedule-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "schedule" nonce)
