@@ -14,7 +14,7 @@ default:
 
 [group('operations')]
 [doc('Creates a new operation doc')]
-new-operation operation environment chain:
+new-operation operation environment chain base="main":
     #!/bin/bash
     set -euo pipefail
 
@@ -24,9 +24,12 @@ new-operation operation environment chain:
 
     operation_name="{{ datetime('%Y-%m-%d') }}-{{operation}}"
     dir="runbooks/operations/$operation_name"
-    git checkout main
-    
-    # git pull origin main
+    # Operations are normally cut from main, but during a transition the tooling/runbook may live on a
+    # not-yet-merged branch (e.g. the v3 upgrade can't merge to main until mainnet is upgraded). Pass that
+    # branch as `base` to cut the operation from it instead.
+    git checkout {{base}}
+
+    # git pull origin {{base}}
     git checkout -b operations/$operation_name
 
     mkdir $dir
