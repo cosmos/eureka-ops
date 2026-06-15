@@ -75,6 +75,12 @@ just shadow-v2-to-v3-mainnet-timelock
 
 The proposer/executor Safe and SP1 client ids are read from the JSON (set `SP1_CLIENT_IDS` to migrate a subset). It deploys the v3 stack (proxies left on v2), schedules each op via the impersonated Safe, advances past `getMinDelay()`, asserts that executing ICS26Router before ICS20Transfer reverts, executes the upgrades + migrations, registers ICS27, initializes escrows, and verifies.
 
+**Before a mainnet run that folds in grants (step 7), rehearse the fold:** set `REHEARSE_RATE_LIMITER_GRANT=1` to also schedule a representative rate-limiter grant, fold its execute into the atomic MultiSend via `EXTRA_TIMELOCK_OPS`, and assert on-chain that it landed — exercising the `EXTRA_TIMELOCK_OPS` path end-to-end before it runs live. It's off by default (the core rehearsal is unchanged).
+
+```bash
+REHEARSE_RATE_LIMITER_GRANT=1 just shadow-v2-to-v3-sepolia-timelock
+```
+
 ## Runbook
 
 ### 1. Create the operations branch
