@@ -12,6 +12,7 @@
   - `just verify-deployment` fails between `deploy-light-client` and the migration execute (the JSON points at the new client while the router still maps the old one). Only run final verification after the migration.
   - The `verify (… .json)` CI jobs stay red from when v3 tooling lands on `main` until step 11 completes on that chain (`VerifyDeployment` asserts v3 state while the chain is still v2).
 - **Rate limits.** In v3 `RATE_LIMITER_ROLE` is manager-wide; once any escrow's target role is configured, every holder can set limits on all configured escrows (no v2 per-escrow isolation).
+- **Signing.** Broadcast recipes (`deploy-*`, `register-ics27-gmp`) sign with `PRIVATE_KEY` if set, otherwise a Ledger (`--ledger --sender $SENDER`; add `MNEMONIC_INDEX` if the address isn't Ledger account 0, and enable blind signing for contract calls). The Safe steps (6–7) instead sign the `safeTxHash` (Safe UI or signing device). **Step 8 must be sent from an `.accessManagerRoles.idCustomizers` account — usually *not* the deployer key.**
 
 ## Shadow fork rehearsal
 
@@ -228,7 +229,7 @@ just safe-propose <multisend_to> <multisend_data> <execute_safe_nonce> 1
 
 ### 8. Register the ICS27GMP app
 
-Must run after the `ICS26Router` upgrade — `addIBCApp` is now gated by the AccessManager `ID_CUSTOMIZER_ROLE`. An ID customizer runs:
+`addIBCApp` is gated by the AccessManager `ID_CUSTOMIZER_ROLE`, so this must be sent from an `.accessManagerRoles.idCustomizers` account — typically **not** the deployer/Safe-owner key. Point the wallet at it first (e.g. Ledger via `SENDER` + unset `PRIVATE_KEY`; see **Signing**). Must run after the `ICS26Router` upgrade. It broadcasts `addIBCApp("gmpport", <ics27Gmp.proxy>)` and self-verifies (the call reverts if the signer lacks the role):
 
 ```bash
 just register-ics27-gmp
