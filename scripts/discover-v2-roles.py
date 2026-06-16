@@ -50,7 +50,7 @@ ROLE_MAP = {
     "PORT_CUSTOMIZER_ROLE":     (6,    "idCustomizers",    "merged into v3 ID_CUSTOMIZER"),
     "CLIENT_ID_CUSTOMIZER_ROLE":(6,    "idCustomizers",    "merged into v3 ID_CUSTOMIZER"),
     "ERC20_CUSTOMIZER_ROLE":    (7,    "erc20Customizers", ""),
-    "TOKEN_OPERATOR_ROLE":      (None, None,               "NO v3 equivalent — capability dropped"),
+    "TOKEN_OPERATOR_ROLE":      (None, None,               "no v3 role: managed IBCERC20 metadata customizers; v3 removed mutable metadata (use setCustomERC20 / ERC20_CUSTOMIZER)"),
     "LIGHT_CLIENT_MIGRATOR_ROLE":(None,None,               "NO v3 role — migrateClient is ADMIN-gated in v3"),
 }
 CANDIDATES = list(ROLE_MAP) + ["ID_CUSTOMIZER_ROLE"]

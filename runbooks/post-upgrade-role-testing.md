@@ -337,14 +337,18 @@ self-discovers role names via the on-chain getters (and classifies per-client
 |---|---|---|
 | RELAYER, PAUSER, UNPAUSER, DELEGATE_SENDER, PORT+CLIENT_ID_CUSTOMIZER, ERC20_CUSTOMIZER | **match the JSON exactly** | auto-granted by the bootstrap from the JSON — no action |
 | **RATE_LIMITER** (escrows `cosmoshub-0`, `ledger-mainnet-1`) | `0x4b46ea82…`, `0x64259f72…` (client-4 escrow: none) | **not in the JSON → re-grant in step 10** |
-| TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 equivalent — capability dropped** (confirm intended) |
+| TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 role** — it managed who may relabel IBCERC20 metadata (`grant/revokeMetadataCustomizerRole` → `setMetadata`). v3 removes mutable IBCERC20 metadata entirely; the replacement is `setCustomERC20` under **`ERC20_CUSTOMIZER`** (migrated), so `0x4b46ea82…` keeps the comparable power. Only the *in-place relabel of an auto-token* is gone. |
 | LIGHT_CLIENT_MIGRATOR (×11 per-client: client-0..4, hub-testnet-0..3, cosmoshub-0, ledger-mainnet-1) | deployer + timelock | **no v3 role** (migrateClient is ADMIN-gated) — dropped; governance-held only |
 | DEFAULT_ADMIN (ICS26 + ICS20) | timelock `0xb3999B2D…` | becomes v3 `ADMIN` (the timelock) |
 
 Takeaways for the round: the 6 bootstrap-migrated roles are complete; the **only grant not covered by
 the JSON is `RATE_LIMITER`** (2 accounts × 2 escrows) — fold it into the step-6/7 timelock round (or
 do step 10 after). The token-operator and per-client migrator capabilities are intentionally gone in
-v3; confirm that's acceptable. Re-run this tool right before cutover in case holders change.
+v3 (token-operator's intent — controlling a denom's ERC20 — is covered by `setCustomERC20` /
+`ERC20_CUSTOMIZER`; what's removed is mutating an auto-deployed IBCERC20's metadata in place, and
+per-client migration is now ADMIN-gated); confirm that's acceptable. If any IBCERC20 was given custom
+metadata in v2, confirm it survives the beacon upgrade or re-register it via `setCustomERC20`. Re-run
+this tool right before cutover in case holders change.
 
 ### Recommended mainnet scope (run post-cutover)
 
