@@ -346,9 +346,19 @@ the JSON is `RATE_LIMITER`** (2 accounts × 2 escrows) — fold it into the step
 do step 10 after). The token-operator and per-client migrator capabilities are intentionally gone in
 v3 (token-operator's intent — controlling a denom's ERC20 — is covered by `setCustomERC20` /
 `ERC20_CUSTOMIZER`; what's removed is mutating an auto-deployed IBCERC20's metadata in place, and
-per-client migration is now ADMIN-gated); confirm that's acceptable. If any IBCERC20 was given custom
-metadata in v2, confirm it survives the beacon upgrade or re-register it via `setCustomERC20`. Re-run
-this tool right before cutover in case holders change.
+per-client migration is now ADMIN-gated); confirm that's acceptable. Re-run this tool right before
+cutover in case holders change.
+
+**IBCERC20 metadata (informational — no action needed).** Metadata customization *was* used in v2:
+5 of the 13 auto-deployed tokens carry custom name/symbol/decimals (`cosmoshub-0/uatom` → "Cosmos Hub
+ATOM", plus SEDA, Nillion, and two hub-testnet ATOMs). It survives the v2→v3 IBCERC20 beacon upgrade
+unchanged — identical storage layout (same `IBCERC20_STORAGE_SLOT` + struct) and the per-denom proxies
+are never re-initialized — so v3 just freezes it (no more `setMetadata`). One enumeration caveat if you
+ever audit the token set: `setCustomERC20` (the `ERC20_CUSTOMIZER` path) registers external tokens with
+*no event*, so the registered-denom set is larger than the `IBCERC20ContractCreated` logs imply — on
+mainnet (2026-06-16) it's 13 beacon tokens + 6 external = 19. Enumerate via both paths; a couple of the
+externals are plain mintable tokens (they don't expose `ics20()`) whose mint/burn is keyed to the
+unchanged ICS20 proxy address, so the upgrade doesn't touch them.
 
 ### Recommended mainnet scope (run post-cutover)
 
