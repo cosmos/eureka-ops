@@ -121,6 +121,16 @@ Update `deployments/<environment>/<chain_id>.json`:
 
 Same branch, once per client moving to v6.1.
 
+> **Mainnet (chain 1): the committed `deployments/mainnet/1.json` is still PRE-v6.1.** All three
+> clients carry the *current* on-chain vkeys (`updateClient=0x009443d9…`), and two of three still
+> point `.verifier` at direct v5.0.0 verifiers (`cosmoshub-0`→`0x2bB76Cb5…`,
+> `ledger-mainnet-1`→`0xbB3FeAbf…`); only `client-4` is already on the `0x397A5f7f…` gateway. So
+> this whole step **is real work for mainnet**, not already staged. **`client-4` is a scope
+> decision:** its chainId is the generic `"provider"` and its height is frozen — confirm whether
+> `08-wasm-301` is a live relayed channel and decide migrate-vs-drop **before** building the step-7
+> MultiSend (the migrate set must match across rehearsal, expected-count, and the execute). See
+> [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md).
+
 **a. Trusted state** — regenerate from the proof-api (version-independent, so the existing proof-api is fine). Prompts for the client ID:
 
 ```bash
@@ -133,7 +143,22 @@ just deploy-fresh-light-client-state
 just sp1-vkeys --write <environment> <chain_id> <client_id>...
 ```
 
+Put `--version <tag>` **before** `--write` — the `--write` handler greedily consumes all remaining
+args as client ids, so a trailing `--version` is misparsed. `sp1-vkeys` needs a local
+solidity-ibc-eureka checkout (`SOLIDITY_IBC_EUREKA`) plus the cargo + SP1 toolchain. **The default
+tag `v2.0.0-rc.2` is a release *candidate*** (no final `sp1-programs-v2.0.0` exists at time of
+writing) — testnet shipped on rc.2, but get an explicit **go/no-go** from the SP1/relayer owners on
+the tag for mainnet, since all four vkeys are a pure function of the ELFs and the prod relayer must
+run the *identical* tag.
+
 **c. Verifier** — set `.verifier` to the SP1 v6.1 gateway for the chain (Groth16 or Plonk, matching the client's `zkAlgorithm`). It must be an explicit nonzero address for `mainnet`/`testnet`/non-default shadow envs (empty or `"mock"` is only allowed for `local`/`shadow-mainnet`/`shadow-sepolia`). Validate before deploying — with `ETH_RPC` set this also checks on-chain that the gateway routes v6.1.0 proofs to the real (non-broken) verifier:
+
+The SP1 v6.1 Groth16 verifier trio (same on **mainnet and testnet**): gateway
+`0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` → real v6.1.0 verifier
+`0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2` (`VERSION()==v6.1.0`, proof selector `0x4388a21c`).
+The known-**broken** v6.1.0 verifier `0xf0f70E15e9259970481c4F33bD87C3e47f161dec` is testnet-only and
+absent on mainnet. On mainnet, `client-4` already has the gateway set; `cosmoshub-0` and
+`ledger-mainnet-1` must be repointed from their direct v5.0.0 verifiers to the gateway.
 
 ```bash
 just check-sp1-verifier
@@ -155,6 +180,15 @@ just deploy-light-client
 ```bash
 PROOF_API_ADDR=<host:port> SRC_CHAIN=<cosmos_src_chain> DST_CHAIN=<chain_id> just check-relayer-vkeys
 ```
+
+> `SRC_CHAIN` is the proof-api's **module identifier** (the `cosmos_to_eth` source whose
+> `ics26_address` matches the mainnet `ics26Router.proxy`), **not** the clientId and **not** the
+> chain-id; use `DST_CHAIN=1` on mainnet. A wrong **but valid** module silently generates *another
+> chain's* trusted state (a non-existent module merely errors), so confirm the exact module id for
+> each of `cosmoshub-0` / `ledger-mainnet-1` / `client-4` at pre-flight and record the prod
+> proof-api endpoint (reached via a k8s port-forward at cutover). Each `CreateClient` takes ~3–4
+> min — don't abort/retry mid-call. `deploy-fresh-light-client-state` (step 5a) takes the same
+> `SRC_CHAIN`.
 
 ### 6. Schedule all timelocked operations
 
@@ -217,7 +251,9 @@ EXTRA_TIMELOCK_OPS='0x<rate-limiter-execute>;0x<role-grant-execute>' \
 
 Or build the bundle explicitly with `just execute-timelock-multisend <nonce> '<op>;<op>;…'`, where each op is an `execute-*` recipe invocation or a raw `0x` `execute(...)` calldata. Every sub-call must be a timelock `execute()` (the packer rejects anything else), and predecessor-linked ops must keep their order (ICS20 before ICS26).
 
-A folded grant's `execute` blob must **byte-match its step-6 scheduled op** (identical prompt inputs) **and that schedule must already be executed** — otherwise `timelock.execute` reverts and the whole atomic bundle reverts with it (after the delay, with relaying halted, forcing the very second round you're avoiding). Before packing, confirm each folded op is scheduled and ready: `cast call <timelock> 'isOperationReady(bytes32)(bool)' <opId>` where `opId = hashOperation(<accessManager>,0,<inner-multicall>,0,0)`. Re-verify the `safeTxHash` and decode every sub-call before signing.
+A folded grant's `execute` blob must **byte-match its step-6 scheduled op** (identical prompt inputs) **and that schedule must already be executed** — otherwise `timelock.execute` reverts and the whole atomic bundle reverts with it (after the delay, with relaying halted, forcing the very second round you're avoiding). Before packing, confirm each folded op is scheduled and ready: `cast call <timelock> 'isOperationReady(bytes32)(bool)' <opId>` where `opId = hashOperation(<accessManager>,0,<inner call>,0,0)` and `<inner call>` is the AccessManager call the timelock makes (a `multicall` for the rate-limiter grant — it wires `setTargetFunctionRole` + `grantRole` in one op — and a plain `grantRole` for a bare role grant). Re-verify the `safeTxHash` and decode every sub-call before signing.
+
+**Also reconcile the typed `client_id` args against what you scheduled.** `execute-v3-upgrade-multisend` packs exactly the client ids you pass with no cross-check against the on-chain schedule, so a mistyped/omitted id silently produces a *shorter, valid* MultiSend that executes cleanly and leaves a migration pending (caught only later by step-11 `verify-deployment`, forcing a second 72 h round). Before signing, for every `.light_clients[]` you intend to migrate, confirm its migration op is scheduled and ready (`isOperationReady` on its `opId`) and that its id is in the args.
 
 Propose it as a **DelegateCall** Safe tx (`operation = 1`) at the **same nonce** you printed the hash with — so the hash that gets signed equals the one you verified — then sign and execute it in the Safe UI:
 
@@ -225,11 +261,29 @@ Propose it as a **DelegateCall** Safe tx (`operation = 1`) at the **same nonce**
 just safe-propose <multisend_to> <multisend_data> <execute_safe_nonce> 1
 ```
 
+> **Mainnet (4-of-7 hardware Safe) proposal path.** `scripts/safe-propose.sh` signs with
+> `PRIVATE_KEY` only — there is no Ledger branch — and the standard Safe UI cannot create an
+> arbitrary `operation = DelegateCall` tx outside its batch builder. So on mainnet either (a)
+> designate one of the 7 hardware owners to post the proposal (extend `safe-propose.sh` with a
+> `--ledger` branch, or post via the Safe SDK), or (b) reconstruct the bundle in the Safe
+> Transaction Builder as a **delegatecall to MultiSendCallOnly `0x9641d764…`**. In every case each
+> signer must verify **on-device** that `to == 0x9641d764…`, `operation == DelegateCall`, and the
+> `safeTxHash` equals the recipe's recomputed value (next paragraph) **before** approving. Assign
+> explicit owners for halting and resuming relaying around the window, and run steps 7 → 9 → 11
+> back-to-back to keep it short.
+
 **Verify before signing (critical for a DelegateCall):** a delegatecall runs the target's code with the Safe as `msg.sender`, so before signing confirm on your device that `to` == the canonical MultiSendCallOnly (`0x9641d764fc13c8B624c04430C7356C1C7C8102e2`, or your `MULTISEND_CALL_ONLY` override) and `operation` == DelegateCall — **reject any other `to`** — and that the `safeTxHash` matches `just execute-v3-upgrade-multisend <execute_safe_nonce> <client_ids>` recomputed at that nonce.
 
 ### 8. Register the ICS27GMP app
 
-`addIBCApp` is gated by the AccessManager `ID_CUSTOMIZER_ROLE`, so this must be sent from an `.accessManagerRoles.idCustomizers` account — typically **not** the deployer/Safe-owner key. Point the wallet at it first (e.g. Ledger via `SENDER` + unset `PRIVATE_KEY`; see **Signing**). Must run after the `ICS26Router` upgrade. It broadcasts `addIBCApp("gmpport", <ics27Gmp.proxy>)` and self-verifies (the call reverts if the signer lacks the role):
+`addIBCApp` is gated by the AccessManager `ID_CUSTOMIZER_ROLE`, so this must be sent from an `.accessManagerRoles.idCustomizers` account — typically **not** the deployer/Safe-owner key. On mainnet that account is `0x4b46ea82D80825CA5640301f47C035942e6D9A46`. Point the wallet at it first (e.g. Ledger via `SENDER` + unset `PRIVATE_KEY`; see **Signing**). Must run after the `ICS26Router` upgrade. It broadcasts `addIBCApp("gmpport", <ics27Gmp.proxy>)` and self-verifies (the call reverts if the signer lacks the role):
+
+> **Ledger derivation-path caveat.** `MNEMONIC_INDEX` only varies the last index of
+> `m/44'/60'/0'/0/i`; a **Ledger Live** account at `m/44'/60'/i'/0/0` is unreachable that way.
+> *Before* the window, confirm which path/index resolves to `0x4b46ea82…` (`cast wallet address
+> --ledger` with both schemes); if it's a Ledger Live account, use a matching wallet or extend the
+> recipe to accept a custom derivation path. A wrong index reverts (`restricted`) — recoverable,
+> not a mis-execution, but it blocks signing mid-window.
 
 ```bash
 just register-ics27-gmp
@@ -262,7 +316,7 @@ just timelock-grant-rate-limiter-role schedule
 just timelock-grant-rate-limiter-role execute <safe_nonce>
 ```
 
-> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none). These are **not** in the deployment JSON — this step is **not** a no-op on mainnet (it was on testnet). Re-confirm with `discover-v2-roles.py` immediately before cutover.
+> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none) — confirmed on-chain via `hasRole`. These are **not** in the deployment JSON, so this step is **not** a no-op on mainnet (it was on testnet). The authoritative, maintained copy of this snapshot lives in [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md); re-confirm with `discover-v2-roles.py` immediately before cutover (holders can change).
 
 `RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured. `verify-deployment` does not assert these grants — confirm them manually.
 

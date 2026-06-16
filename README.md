@@ -29,6 +29,21 @@ To see available recipes, run:
 just --list
 ```
 
+## Runbooks
+
+Operator procedures live in [`runbooks/`](./runbooks). Key ones:
+
+- [`upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md) — the canonical v2→v3 core upgrade + SP1 v6.1 migration (steps 1–13). **Single source of truth for that operation.**
+- [`post-upgrade-role-testing.md`](./runbooks/post-upgrade-role-testing.md) — validate & test the v3 `AccessManager` roles after a v2→v3 upgrade (read its *Mainnet adaptation* section before running anything on mainnet).
+- [`upgrade-light-client.md`](./runbooks/upgrade-light-client.md), [`upgrade-ics-20.md`](./runbooks/upgrade-ics-20.md), [`upgrade-ics-26.md`](./runbooks/upgrade-ics-26.md), [`upgrade-escrow.md`](./runbooks/upgrade-escrow.md), [`upgrade-ibcerc20.md`](./runbooks/upgrade-ibcerc20.md) — routine single-contract upgrades.
+- [`pause.md`](./runbooks/pause.md), [`recover-expired-light-client.md`](./runbooks/recover-expired-light-client.md), [`env-setup.md`](./runbooks/env-setup.md).
+- **Operations log:** [`runbooks/operations/`](./runbooks/operations) — one folder per executed operation; each has a `RECORD.md` (addresses, tx hashes, findings). See [`2026-06-15-upgrade-v2-to-v3/RECORD.md`](./runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md) for the v2→v3 record.
+
+### Role discovery & validation scripts
+
+- [`scripts/discover-v2-roles.py`](./scripts/discover-v2-roles.py) — **pre-cutover**: enumerate the live v2 role grants (via Etherscan logs) and reconcile against the deployment JSON, so you build the exact grant set (incl. the `RATE_LIMITER` re-grant set) the upgrade must carry. Needs `ETH_RPC` + `ETHERSCAN_API_KEY`.
+- [`scripts/validate-v3-roles.py`](./scripts/validate-v3-roles.py) — **post-cutover**: independently validate every v3 `AccessManager` (target,selector)→role, exact role membership, and `authority()` wiring on-chain. Needs `ETH_RPC`.
+
 ## Manual verification instructions
 
 Any on-chain verification that is not implemented as recipes yet should be documented below:

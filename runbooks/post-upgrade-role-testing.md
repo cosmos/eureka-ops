@@ -94,8 +94,25 @@ deployment JSON exactly (incl. `ADMIN == {timelock}`, which also proves the boot
 and no EOA is a stray admin); **C** all proxies + escrows `authority() == AccessManager`; **D**
 reports escrow `setRateLimit` wiring (expected: still `ADMIN(0)` until Part 2.3 runs).
 
-✅ Current testnet result: **32/32 pass** (last run 2026-06-16). Re-run after any role change and
-immediately post-mainnet-cutover.
+✅ Current testnet result: **32/32 pass, 0 failed** (last run 2026-06-16). Re-run after any role
+change and immediately post-mainnet-cutover. The pass **total scales with the resolved escrow
+count** (each escrow adds an `authority()` and a `setRateLimit` line), so judge the run by **`0
+failed`**, not an absolute total: testnet has 2 escrows (→ 32); **mainnet has 3 escrows**
+(`cosmoshub-0`, `ledger-mainnet-1`, `client-4`) → expect **~33 passed / 0 failed**.
+
+> **After step 10 on mainnet, role `RATE_LIMITER(5)` is NOT empty** (testnet had zero holders,
+> which is why role 5 stayed empty there). Populate `.accessManagerRoles.rateLimiters` in
+> `deployments/mainnet/1.json` with the re-granted holders so Part B matches exactly; otherwise the
+> tool flags the live role-5 holders as `UNEXPECTED` and exits non-zero. See
+> [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md)
+> for the snapshot.
+
+> **Mainnet prerequisites for `validate-v3-roles.py`:** the script exits early while
+> `accessManager == 0x0`, and Parts A/C also read `ics27Gmp.proxy` — so first write the deployed
+> **AccessManager** and **`ics27Gmp.proxy`** (+ implementation/accountImplementation) into
+> `deployments/mainnet/1.json`, and pass **`FROM_BLOCK=<AccessManager deploy block>`** explicitly
+> (the local `broadcast/DeployV3AccessManager.sol/1/` artifact won't exist on a signer's machine; a
+> from-block of `0` is rejected for range by public RPCs).
 
 ---
 
@@ -229,7 +246,8 @@ testnet confirmation of the same fold.
 is proven by:
 
 1. The v2→v3 upgrade itself (the ICS20/ICS26 `upgradeToAndCall` + escrow/ibcERC20 beacon upgrades
-   already executed via the timelock — see `TMP_WHAT_HAS_BEEN_DONE.md`).
+   already executed via the timelock — see
+   [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md)).
 2. The SP1 `migrateClient` ops that landed during the upgrade.
 3. The shadow-fork rehearsal (`just shadow-v2-to-v3-sepolia-with-sp1`), which runs the whole admin
    upgrade path end-to-end against a fork.
