@@ -289,6 +289,20 @@ just timelock-grant-role schedule
 just timelock-grant-role execute <safe_nonce>
 ```
 
+### 13. Validate and test the AccessManager roles
+
+After verification passes, confirm the role wiring landed exactly as configured and is executable.
+See **[`runbooks/post-upgrade-role-testing.md`](post-upgrade-role-testing.md)** (read its *Mainnet
+adaptation* section first — mainnet is a 4-of-7 Safe with a 72 h timelock).
+
+```bash
+# static inventory: every (target,selector)->role, exact membership, authority() wiring
+ETH_RPC=<rpc> FROM_BLOCK=<accessManager-deploy-block> python3 scripts/validate-v3-roles.py <env> <chain>
+```
+
+Then run the Tier-S gate simulations (read-only); run the Tier-L live execution tests only with
+sign-off and via the production Safe/timelock path.
+
 ---
 
 > IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Use the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.
