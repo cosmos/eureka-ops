@@ -200,7 +200,7 @@ Capture each grant's `execute` blob **at the same time, with byte-identical prom
 
 ### 7. Execute the upgrade atomically (after the delay)
 
-**Before running:** confirm the timelock delay has elapsed and the relayer lockstep gate (step 5e) passed. **Snapshot the current v2 `RATE_LIMITER_ROLE` holders on each live `Escrow` now** — you need them to re-grant in step 10, and this execute flips escrows to the AccessManager authority. The escrows (`ICS20Transfer.getEscrow(<clientId>)`) are plain `AccessControl` (not enumerable), so there's no member list to read: collect every account from the escrow's `RoleGranted` events for `keccak256("RATE_LIMITER_ROLE")` via an explorer's full-range `getLogs` (the public RPC caps `eth_getLogs` at ~50k blocks), then confirm each with `hasRole(role, account)`. If none are configured, step 10 is a no-op. Halt packet relaying now and keep it halted until verification passes (step 11).
+**Before running:** confirm the timelock delay has elapsed and the relayer lockstep gate (step 5e) passed. **Snapshot the current v2 `RATE_LIMITER_ROLE` holders on each live `Escrow` now** — you need them to re-grant in step 10, and this execute flips escrows to the AccessManager authority. The escrows are plain (non-enumerable) `AccessControl`, so run **`scripts/discover-v2-roles.py`** (Etherscan logs API, no 50k-block cap) — it reconstructs and `hasRole`-confirms every live v2 holder of *all* roles and reconciles them against the deployment JSON, so it doubles as the completeness check for the whole grant set (rate limiters, plus any role missing from / extra in the JSON). See `runbooks/post-upgrade-role-testing.md`. If none are configured, step 10 is a no-op. Halt packet relaying now and keep it halted until verification passes (step 11).
 
 ```bash
 just execute-v3-upgrade-multisend <execute_safe_nonce> <client_id_1> <client_id_2> ...
@@ -255,12 +255,14 @@ just initialize-known-escrows-v2-params
 
 > **Mainnet: fold this into the single step-6/7 round** rather than a separate timelock window — schedule it in step 6 and pack its execute into the step-7 MultiSend via `EXTRA_TIMELOCK_OPS` (see step 7). The standalone schedule/execute below is the separate-round form (e.g. a later addition).
 
-`deploy-v3-access-manager` does **not** wire any escrow `setRateLimit` role. After the escrow beacon upgrade (step 7) flips escrows to the AccessManager authority, `setRateLimit` defaults to `ADMIN_ROLE`, so every v2 `RATE_LIMITER_ROLE` holder loses access until re-granted. Use the holder list you snapshotted before executing (step 7). For each `(client_id, rate_limiter)` that must keep access (this wires the escrow's `setRateLimit` selector to `RATE_LIMITER_ROLE` and grants the role):
+`deploy-v3-access-manager` does **not** wire any escrow `setRateLimit` role. After the escrow beacon upgrade (step 7) flips escrows to the AccessManager authority, `setRateLimit` defaults to `ADMIN_ROLE`, so every v2 `RATE_LIMITER_ROLE` holder loses access until re-granted. Use the holder list from `scripts/discover-v2-roles.py` (it enumerates and reconciles the whole grant set, including rate limiters — see `runbooks/post-upgrade-role-testing.md`). For each `(client_id, rate_limiter)` that must keep access (this wires the escrow's `setRateLimit` selector to `RATE_LIMITER_ROLE` and grants the role):
 
 ```bash
 just timelock-grant-rate-limiter-role schedule
 just timelock-grant-rate-limiter-role execute <safe_nonce>
 ```
+
+> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none). These are **not** in the deployment JSON — this step is **not** a no-op on mainnet (it was on testnet). Re-confirm with `discover-v2-roles.py` immediately before cutover.
 
 `RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured. `verify-deployment` does not assert these grants — confirm them manually.
 

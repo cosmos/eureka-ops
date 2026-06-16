@@ -316,6 +316,36 @@ Confirmed mainnet on-chain state (chain 1) as of 2026-06-16, *pre-upgrade*:
    1 schedule ceremony + 3 days + 1 execute ceremony. Batch all chosen tests' ops into the two
    ceremonies to amortize the wait to a single 72 h window total.
 
+### Discovering the complete grant set (pre-cutover)
+
+The bootstrap only grants what's in `deployments/<env>/<chain>.json` `accessManagerRoles`. That JSON is
+hand-maintained, and the v2 role model is **richer than it** (per-client roles, a token operator, etc.),
+so before the round, enumerate the *actual* live v2 holders and reconcile:
+
+```bash
+ETH_RPC=<rpc> ETHERSCAN_API_KEY=<key> python3 scripts/discover-v2-roles.py mainnet 1
+```
+
+`discover-v2-roles.py` reads each live v2 contract's `RoleGranted`/`RoleRevoked` history (Etherscan
+logs API — no 50k-block cap), reconstructs the current holder set per role, confirms with `hasRole`,
+self-discovers role names via the on-chain getters (and classifies per-client
+`LIGHT_CLIENT_MIGRATOR_ROLE`s by their grant tx), then reconciles against the JSON + v3 role model.
+
+**Mainnet result (2026-06-16, pre-upgrade):**
+
+| v2 role(s) | live holders | v3 disposition |
+|---|---|---|
+| RELAYER, PAUSER, UNPAUSER, DELEGATE_SENDER, PORT+CLIENT_ID_CUSTOMIZER, ERC20_CUSTOMIZER | **match the JSON exactly** | auto-granted by the bootstrap from the JSON — no action |
+| **RATE_LIMITER** (escrows `cosmoshub-0`, `ledger-mainnet-1`) | `0x4b46ea82…`, `0x64259f72…` (client-4 escrow: none) | **not in the JSON → re-grant in step 10** |
+| TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 equivalent — capability dropped** (confirm intended) |
+| LIGHT_CLIENT_MIGRATOR (×11 per-client: client-0..4, hub-testnet-0..3, cosmoshub-0, ledger-mainnet-1) | deployer + timelock | **no v3 role** (migrateClient is ADMIN-gated) — dropped; governance-held only |
+| DEFAULT_ADMIN (ICS26 + ICS20) | timelock `0xb3999B2D…` | becomes v3 `ADMIN` (the timelock) |
+
+Takeaways for the round: the 6 bootstrap-migrated roles are complete; the **only grant not covered by
+the JSON is `RATE_LIMITER`** (2 accounts × 2 escrows) — fold it into the step-6/7 timelock round (or
+do step 10 after). The token-operator and per-client migrator capabilities are intentionally gone in
+v3; confirm that's acceptable. Re-run this tool right before cutover in case holders change.
+
 ### Recommended mainnet scope (run post-cutover)
 
 - **Always, immediately after cutover (read-only, safe, automatable):**
