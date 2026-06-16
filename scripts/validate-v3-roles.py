@@ -8,7 +8,10 @@ dry-run) check that the migration landed every role exactly as configured.
 It verifies four things:
 
   A. Target function roles  — every protocol (target, selector) is gated by the role
-     the contracts expect (derived from IBCRolesLib / V3UpgradeSelectors; see TABLE).
+     the contracts expect. The (target, selector)->role TABLE below is a hand-encoded
+     4-byte-selector constant, manually verified against IBCRolesLib + the v3 deploy
+     wiring (DeployAccessManagerWithRoles + the local script/helpers/V3UpgradeSelectors.sol
+     backfill for migrateClient/upgradeAccountTo) for v3.0.1 — re-check it on a version bump.
   B. Role membership        — reconstructed from RoleGranted/RoleRevoked events, so it
      catches BOTH missing configured holders AND unexpected/stray holders (e.g. a
      bootstrap that failed to renounce ADMIN), and confirms every holder's execution
@@ -49,9 +52,8 @@ ROLES = DEPLOY["accessManagerRoles"]
 ROLE_NAMES = {0:"ADMIN",1:"RELAYER",2:"PAUSER",3:"UNPAUSER",4:"DELEGATE_SENDER",
               5:"RATE_LIMITER",6:"ID_CUSTOMIZER",7:"ERC20_CUSTOMIZER"}
 
-# (target, role) -> {selector: human name}. Selectors are protocol constants taken from
-# the access-controlled interfaces (IBCRolesLib.*Selectors / V3UpgradeSelectors); pulled
-# from the compiled methodIdentifiers, not hand-encoded.
+# (target, role) -> {selector: human name}. HAND-ENCODED 4-byte selectors, cross-checked against
+# IBCRolesLib + the v3 deploy wiring (see module docstring). Keep in sync on a SOL version bump.
 TARGET_ROLES = [
     (ICS26, 6, {"0x5f516889":"addIBCApp(string,address)", "0x1ec43e23":"addClient(string,(string,bytes[]),address)"}),
     (ICS26, 1, {"0x5ebd10ca":"recvPacket", "0xb98c330a":"timeoutPacket", "0x1bca011a":"ackPacket", "0x6fbf8079":"updateClient"}),
@@ -67,10 +69,14 @@ TARGET_ROLES = [
 ]
 SET_RATE_LIMIT_SEL = "0xd34a3fd9"
 
-# role id -> JSON key holding its configured members
+# role id -> JSON key holding its configured members. RATE_LIMITER(5) is NOT auto-migrated (it is
+# re-granted in runbook step 10), so it has no holders pre-step-10 (e.g. testnet) but a NON-EMPTY
+# set afterwards (e.g. mainnet). Read it from an optional `.accessManagerRoles.rateLimiters` array
+# so the post-step-10 run matches exactly instead of flagging the live holders as UNEXPECTED and
+# exiting non-zero. Absent key -> empty set -> the pre-step-10 behavior is unchanged.
 ROLE_JSON_KEY = {1:"relayers", 2:"pausers", 3:"unpausers", 4:"delegateSenders",
-                 6:"idCustomizers", 7:"erc20Customizers"}
-EXPECTED = {0: {ROLES["admin"].lower()}, 5: set()}
+                 5:"rateLimiters", 6:"idCustomizers", 7:"erc20Customizers"}
+EXPECTED = {0: {ROLES["admin"].lower()}}
 for rid, key in ROLE_JSON_KEY.items():
     EXPECTED[rid] = {a.lower() for a in ROLES.get(key, [])}
 

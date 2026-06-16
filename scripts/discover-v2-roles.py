@@ -21,7 +21,7 @@ exact grant set.
 Usage:
     ETH_RPC=<rpc> ETHERSCAN_API_KEY=<key> python3 scripts/discover-v2-roles.py [env=mainnet] [chain=1]
 """
-import json, os, subprocess, sys, urllib.request, urllib.parse
+import json, os, subprocess, sys, time, urllib.request, urllib.parse
 
 ENV   = sys.argv[1] if len(sys.argv) > 1 else "mainnet"
 CHAIN = sys.argv[2] if len(sys.argv) > 2 else "1"
@@ -58,6 +58,33 @@ CANDIDATES = list(ROLE_MAP) + ["ID_CUSTOMIZER_ROLE"]
 def cast(*a):
     return subprocess.run(["cast", *a, "--rpc-url", RPC], capture_output=True, text=True).stdout.strip()
 
+def _etherscan_page(q, addr, topic0):
+    """One getLogs page -> list of logs. FAILS LOUD on throttle/error.
+
+    Etherscan returns `result` as a STRING (e.g. "Max rate limit reached") with status "0" when
+    throttled or erroring. The old code treated any non-list result as end-of-logs and silently
+    returned a partial/empty set — which, on the contracts this tool reconciles, could drop the
+    RATE_LIMITER re-grant set while still printing "JSON matches live v2 holders". So distinguish a
+    legitimate empty result ("No records found") from a throttle/error, retry the latter, and exit
+    non-zero if it never clears rather than under-reporting holders.
+    """
+    last = None
+    for attempt in range(6):
+        with urllib.request.urlopen(f"https://api.etherscan.io/v2/api?{q}", timeout=60) as r:
+            d = json.load(r)
+        res, msg = d.get("result"), (d.get("message") or "")
+        if isinstance(res, list):
+            return res
+        if "no records found" in msg.lower():     # legitimate empty, result is a string here
+            return []
+        last = (d.get("status"), msg, res)
+        sys.stderr.write(f"  etherscan retry {attempt+1}/6 {addr} topic0={topic0[:12]} "
+                         f"(status={d.get('status')!r} message={msg!r})\n")
+        time.sleep(1.5 * (attempt + 1))
+    sys.exit(f"\nETHERSCAN getLogs FAILED for {addr} topic0={topic0} after 6 retries: {last!r}\n"
+             f"Refusing to treat a throttled/error response as 'no logs' (it would silently drop "
+             f"role holders). Re-run (optionally with a paid ETHERSCAN_API_KEY tier).")
+
 def etherscan_logs(addr, topic0, topic1=None):
     out, page = [], 1
     while True:
@@ -67,13 +94,12 @@ def etherscan_logs(addr, topic0, topic1=None):
         if topic1:
             params["topic1"] = topic1; params["topic0_1_opr"] = "and"
         q = urllib.parse.urlencode(params)
-        with urllib.request.urlopen(f"https://api.etherscan.io/v2/api?{q}", timeout=60) as r:
-            d = json.load(r)
-        res = d.get("result")
-        if not isinstance(res, list) or not res: break
+        res = _etherscan_page(q, addr, topic0)
+        if not res: break
         out += res
         if len(res) < 1000: break
         page += 1
+        time.sleep(0.25)   # be gentle with the rate limit between pages
     return out
 
 # per-client v2 roles are keccak(abi.encodePacked("LIGHT_CLIENT_MIGRATOR_ROLE_", clientId)), granted
