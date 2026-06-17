@@ -242,13 +242,9 @@ Re-run immediately before scheduling (roles can change).
 | `client-4` *(DROPPED)* | `08-wasm-301` | `0x3f36Fd49251475aC17bB680D56F412Bf81Aa5778` | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` (gateway, already set) |
 
 > **The committed `deployments/mainnet/1.json` is still in PRE-v6.1 state** — all three clients
-> carry the *current* on-chain vkeys (`updateClient=0x009443d9…`, etc.), not the v6.1 vkeys
-> (`0x00d38536…`) that testnet migrated to. Step 5 of the procedure (regenerate trusted state,
-> write v6.1 vkeys, repoint `.verifier` to the gateway for the two clients still on direct v5
-> verifiers) **must still be done for mainnet** — but only for the two migrated clients. **`client-4`
-> is DROPPED** (decided 2026-06-16; see "Mainnet decisions locked"): its chainId is the generic
-> `"provider"`, its `latestHeight` is frozen, and the prod relayer config has no module for it, so
-> it is not a live relayed channel. **The migrate set is `cosmoshub-0` + `ledger-mainnet-1` only.**
+> carry the *current* on-chain vkeys (`updateClient=0x009443d9…`), not the v6.1 vkeys (`0x00d38536…`).
+> Step 5 (regenerate trusted state, write v6.1 vkeys, repoint `.verifier` to the gateway) **must still
+> be done for mainnet** — but only for the two migrated clients (`client-4` dropped; see decision #2).
 
 The SP1 v6.1 Groth16 verifier infrastructure on mainnet is the **same gateway/real-verifier pair
 as testnet** (gateway `0x397A5f7f…` → real `0xb69f2584…`, selector `0x4388a21c`); the broken

@@ -69,12 +69,10 @@ TARGET_ROLES = [
 ]
 SET_RATE_LIMIT_SEL = "0xd34a3fd9"
 
-# RATE_LIMITER(5) and rateLimitedEscrows are read TOP-LEVEL, falling back to `.accessManagerRoles.*`.
-# They MUST live top-level on mainnet: `DeployV3AccessManager._writeAccessManagerRoles` rewrites the whole
-# `.accessManagerRoles` object from struct fields at step 2, so a value nested there is silently dropped
-# before this post-cutover run. (5) is NOT auto-migrated (re-granted in step 10), so it is empty pre-step-10
-# (testnet) and non-empty afterwards (mainnet); the pre-staged set lets the validator hard-fail on a missed grant.
-def cfg(key):  # top-level wins; then the legacy nested location; else empty.
+# RATE_LIMITER(5) + rateLimitedEscrows read TOP-LEVEL (must be: the deploy rewrites .accessManagerRoles at
+# step 2, dropping anything nested there). Empty pre-step-10 (testnet) / pre-staged on mainnet so a missed
+# grant hard-fails. cfg(): top-level, then the legacy nested location, else empty.
+def cfg(key):
     return DEPLOY.get(key) or ROLES.get(key) or []
 
 ROLE_JSON_KEY = {1:"relayers", 2:"pausers", 3:"unpausers", 4:"delegateSenders",

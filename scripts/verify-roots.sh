@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# T-minus trust-root assertions. The whole upgrade trusts three roots that NO other tool checks: the
-# TimelockController's own role config, the governance Safe's owner set/threshold, and the SP1 verifier
-# gateway route. This turns "someone checked manually once" into a re-runnable, fail-closed gate. Read-only.
+# T-minus trust-root assertions (read-only, fail-closed): the TimelockController's own roles, the
+# governance + customizer Safe owner sets/thresholds, the SP1 gateway route, and the escrow set.
 #
 # Usage: ETH_RPC=<rpc> scripts/verify-roots.sh [env=mainnet] [chain=1]
 # Env:
@@ -112,9 +111,8 @@ if [ -z "$vh" ]; then bad "could not read VERIFIER_HASH() from $REAL_VERIFIER"; 
 fi
 
 echo "=== D. Escrows: enumeration + stray probe ==="
-# The light_clients have no `escrow` field, so there is no per-client equality to assert here -- the real
-# assertion is the stray-escrow probe below (no escrow outside the JSON clients). We collect each JSON
-# client's on-chain escrow into json_escrows for that probe and print it for the operator to eyeball vs RECORD.
+# No `escrow` field in the JSON to compare against -- the real assertion is the stray-escrow probe below.
+# Collect each JSON client's on-chain escrow for that probe; print it to eyeball vs RECORD.
 ICS20="$(jq -re '.ics20Transfer.proxy' "$DEP")"
 json_escrows=""
 while IFS= read -r cid; do
