@@ -140,6 +140,40 @@ execute-timelock-multisend nonce ops:
     fi
     value_hex=$(printf '%064x' 0)
 
+    # Schedule-state guard. Confirm a sub-op is a PENDING TimelockController operation on-chain -- scheduled and not
+    # yet executed -- BEFORE packing it. This catches a mistyped/omitted client id, a forgotten schedule, or a
+    # folded grant whose execute blob does not byte-match its scheduled op: all of those otherwise pack cleanly and
+    # only blow up at execute time (a revert, or a silently shorter-but-valid MultiSend) after the full timelock
+    # delay. isOperationPending is true for scheduled-but-not-done regardless of whether the delay has elapsed, so
+    # this also holds while previewing the safeTxHash during the delay window. Needs an RPC (FOUNDRY_ETH_RPC_URL);
+    # if none is configured it is skipped with a loud warning so an offline calldata preview still works.
+    assert_pending() {
+      local data_hex="${1#0x}"
+      if [ -z "${FOUNDRY_ETH_RPC_URL:-${ETH_RPC:-}}" ]; then
+        echo "WARNING: no RPC set (FOUNDRY_ETH_RPC_URL) -- SKIPPING the on-chain schedule-state check for a sub-op." >&2
+        return 0
+      fi
+      local decoded target value payload predecessor salt opid pending
+      if ! decoded=$({{cast_binary}} decode-calldata "execute(address,uint256,bytes,bytes32,bytes32)" "0x${data_hex}" 2>/dev/null); then
+        echo "could not decode a packed execute(...) sub-call to verify it is scheduled; refusing to pack" >&2
+        exit 1
+      fi
+      target=$(printf '%s\n' "$decoded" | sed -n '1p')
+      value=$(printf '%s\n' "$decoded" | sed -n '2p')
+      payload=$(printf '%s\n' "$decoded" | sed -n '3p')
+      predecessor=$(printf '%s\n' "$decoded" | sed -n '4p')
+      salt=$(printf '%s\n' "$decoded" | sed -n '5p')
+      opid=$({{cast_binary}} call "$timelock" "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" "$target" "$value" "$payload" "$predecessor" "$salt")
+      pending=$({{cast_binary}} call "$timelock" "isOperationPending(bytes32)(bool)" "$opid" | awk '{print $1}')
+      if [ "$pending" != "true" ]; then
+        echo "refusing to pack an op that is NOT a pending timelock operation (opId $opid, isOperationPending=$pending):" >&2
+        echo "  target=$target predecessor=$predecessor salt=$salt" >&2
+        echo "  It was never scheduled (mistyped client id / forgotten schedule), a folded grant's execute blob" >&2
+        echo "  does not byte-match its scheduled op, or it already executed. Fix before building the bundle." >&2
+        exit 1
+      fi
+    }
+
     # Pack one validated timelock.execute(...) calldata as a MultiSend sub-tx: operation(00) + to(20) + value(32)
     # + dataLength(32) + data. Rejects anything that is not a timelock execute() call (selector 0x134008d3).
     packed=""
@@ -150,6 +184,7 @@ execute-timelock-multisend nonce ops:
         echo "sub-tx is not a timelock execute(...) call (selector 0x${data_hex:0:8}); refusing to pack" >&2
         exit 1
       fi
+      assert_pending "$data_hex"
       local len=$(( ${#data_hex} / 2 ))
       packed="${packed}00${timelock_hex}${value_hex}$(printf '%064x' "$len")${data_hex}"
     }

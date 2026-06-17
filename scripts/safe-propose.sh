@@ -8,12 +8,21 @@ set -euo pipefail
 # The `safeTxHash` is computed exactly as `just get_safe_hashes` / the schedule recipes print it, so the value
 # you confirm in those recipes is the value signed here.
 #
-# Usage: scripts/safe-propose.sh --to <addr> --data <0xhex> [--nonce <n>] [--operation 0|1] [--origin <label>] [--dry-run]
+# Usage: scripts/safe-propose.sh --to <addr> --data <0xhex> [--nonce <n>] [--operation 0|1] [--origin <label>]
+#                                [--ledger] [--mnemonic-index <n>] [--hd-path <path>] [--dry-run]
 # If --nonce is omitted it is auto-queried as max(on-chain nonce, highest already-queued nonce + 1) from the
 # tx service, so proposing several in a row queues them at consecutive nonces instead of colliding.
+#
+# Signer: a Ledger (--ledger / LEDGER=1) or a raw PRIVATE_KEY. Both sign the EIP-712 safeTxHash directly
+# (--no-hash) and post a v in {27,28} "EIP-712" Safe signature. On a Ledger this is a BLIND-SIGN of the 32-byte
+# hash, so enable blind signing on the device and confirm the hash it shows equals the safeTxHash printed below
+# (== the schedule recipe's recomputed value). --ledger takes precedence over PRIVATE_KEY.
 # Env (used when the flag is omitted):
 #   EUREKA_ENVIRONMENT, EUREKA_CHAIN   -> deployments/<env>/<chain>.json (.safe is the proposer Safe)
 #   PRIVATE_KEY                        -> the proposing owner's key (signs the safeTxHash)
+#   LEDGER=1                           -> sign with a Ledger instead of PRIVATE_KEY (same as --ledger)
+#   MNEMONIC_INDEX                     -> Ledger account index, m/44'/60'/0'/0/<index> (default 0; --mnemonic-index)
+#   MNEMONIC_DERIVATION_PATH           -> full Ledger derivation path override (--hd-path; for Ledger Live paths)
 #   ETH_RPC                            -> used to verify the signer is an owner and show the on-chain nonce
 #   SAFE_TX_SERVICE                    -> override the transaction-service base URL
 #   SAFE_API_KEY                       -> optional bearer token (newer Safe services require one)
@@ -33,6 +42,10 @@ nonce=""
 operation=0
 origin="eureka-ops safe-propose"
 dry_run=0
+use_ledger=0
+[ -n "${LEDGER:-}" ] && [ "${LEDGER}" != 0 ] && use_ledger=1
+mnemonic_index="${MNEMONIC_INDEX:-0}"
+hd_path="${MNEMONIC_DERIVATION_PATH:-}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -43,8 +56,11 @@ while [ "$#" -gt 0 ]; do
     --origin) origin="${2:?--origin needs a label}"; shift 2 ;;
     --env) env="${2:?}"; shift 2 ;;
     --chain) chain="${2:?}"; shift 2 ;;
+    --ledger) use_ledger=1; shift ;;
+    --mnemonic-index) mnemonic_index="${2:?--mnemonic-index needs a value}"; shift 2 ;;
+    --hd-path) hd_path="${2:?--hd-path needs a derivation path}"; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
-    -h | --help) sed -n '3,21p' "$0"; exit 0 ;;
+    -h | --help) sed -n '4,29p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -107,9 +123,21 @@ message="$(cast abi-encode 'x(bytes32,address,uint256,bytes32,uint8,uint256,uint
 message_hash="$(cast keccak "$message")"
 safe_tx_hash="$(cast keccak "$(cast concat-hex 0x1901 "$domain" "$message_hash")")"
 
-[ -n "${PRIVATE_KEY:-}" ] || { echo "PRIVATE_KEY is not set (needed to sign the proposal)" >&2; exit 1; }
-sender="$(cast wallet address --private-key "$PRIVATE_KEY")"
-signature="$(cast wallet sign --no-hash "$safe_tx_hash" --private-key "$PRIVATE_KEY")"
+# Signer selection: a Ledger (--ledger / LEDGER=1, takes precedence) or a raw PRIVATE_KEY. Both produce a
+# direct EIP-712 signature over the safeTxHash (--no-hash); for a Ledger this is a blind-sign of the 32-byte
+# hash, so the device must have blind signing enabled and the operator must confirm the on-device hash equals
+# $safe_tx_hash above.
+wallet_args=()
+if [ "$use_ledger" = 1 ]; then
+  wallet_args=(--ledger --mnemonic-index "$mnemonic_index")
+  [ -n "$hd_path" ] && wallet_args+=(--mnemonic-derivation-path "$hd_path")
+  echo "Signing with Ledger (mnemonic-index $mnemonic_index${hd_path:+, path $hd_path}); confirm the hash on the device..." >&2
+else
+  [ -n "${PRIVATE_KEY:-}" ] || { echo "no signer: set PRIVATE_KEY, or pass --ledger (LEDGER=1) for a hardware wallet" >&2; exit 1; }
+  wallet_args=(--private-key "$PRIVATE_KEY")
+fi
+sender="$(cast wallet address "${wallet_args[@]}")"
+signature="$(cast wallet sign "${wallet_args[@]}" --no-hash "$safe_tx_hash")"
 
 # Best-effort: confirm the signer is an owner and surface the on-chain nonce (proposing as a non-owner is
 # rejected by the service, but failing early is friendlier).

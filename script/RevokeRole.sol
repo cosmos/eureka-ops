@@ -27,6 +27,17 @@ contract RevokeRole is Script, Deployments {
 
         // v3 roles are AccessManager uint64 role ids; SafeCast reverts if a v2 bytes32 role hash is passed by mistake.
         uint64 role = SafeCast.toUint64(vm.envUint("REVOKE_ROLE"));
+
+        // ADMIN_ROLE (id 0) is the AccessManager's self-administration root; revoking it from the timelock would
+        // permanently brick governance (nobody could re-grant any role afterwards). Refuse by default and require an
+        // explicit opt-in for the rare legitimate case (e.g. removing a stray admin flagged by validate-v3-roles.py).
+        if (role == 0) {
+            require(
+                vm.envOr("ALLOW_REVOKE_ADMIN", false),
+                "RevokeRole: refusing to revoke ADMIN_ROLE (0); set ALLOW_REVOKE_ADMIN=true to override"
+            );
+        }
+
         address grantee = vm.promptAddress("Grantee to revoke address");
 
         vm.startBroadcast();
