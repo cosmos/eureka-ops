@@ -210,23 +210,27 @@ Role-holder sets (from `deployments/mainnet/1.json`, matching on-chain): **4 rel
 unpauser = the Safe itself, 2 delegate senders, 1 id/erc20 customizer (`0x4b46ea82…`), 3 light
 clients.**
 
-#### Trust-root verification (on-chain, 2026-06-17 — reproduce with `scripts/verify-roots.sh mainnet 1`)
+#### Trust-root verification (on-chain, 2026-06-17 — reproduce with `ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1`)
 
-These three roots are trusted by the whole upgrade and were never asserted by tooling until now;
-`verify-roots.sh` checked them (read-only) and returned **11/11**:
+These roots are trusted by the whole upgrade and were never asserted by tooling until now; `verify-roots.sh`
+checked them (read-only) and returned **13/13**. **Timelock deploy block = `22188631`** (creation tx
+`0x95d263cfe749d98ba9baa5866641de36797033906b5440b087d1d42ceab03c23`) — used as `FROM_BLOCK` for the
+`DEFAULT_ADMIN` event reconstruction (result: **no stray admin; only the timelock holds it**). The
+client-N escrow probe (`client-0..19`) found **no escrow beyond the 3 known** — so the
+`rateLimitedEscrows` / discovery scope is the complete set (cross-checked: JSON = 3, prod relayer config
+relays only `cosmoshub-0` + `ledger-mainnet-1`, `client-4` dropped).
 
 | Root | Check | Result |
 | --- | --- | --- |
 | Timelock `0xb3999B2D…` | `getMinDelay()` | `259200` ✓ |
 | | `hasRole(EXECUTOR_ROLE, address(0))` (open-executor DoS) | `false` ✓ |
 | | PROPOSER / EXECUTOR / CANCELLER = the Safe | `true` ✓ |
-| | `DEFAULT_ADMIN`: timelock self-admin `true`, Safe `false` | ✓ (stray-admin event scan pending `FROM_BLOCK` = timelock deploy block) |
+| | `DEFAULT_ADMIN`: timelock self-admin `true`, Safe `false`; **no stray admin** (events from `22188631`) | ✓ |
 | Governance Safe `0x7B96CD54…` | `getThreshold()` = 4, `getOwners()` count = 7 | ✓ |
 | SP1 gateway `0x397A5f7f…` | route for the v6.1 selector `0x4388a21c` → `0xb69f2584…`, `frozen == false` | ✓ |
-| Escrows | on-chain `getEscrow()` = `cosmoshub-0 0x0fA75C2c…`, `ledger-mainnet-1 0xC76944B0…`, `client-4 0x3f36Fd49…` | match this record |
+| Escrows | `getEscrow()` = `cosmoshub-0 0x0fA75C2c…`, `ledger-mainnet-1 0xC76944B0…`, `client-4 0x3f36Fd49…`; **no stray escrow** in `client-0..19` | ✓ |
 
-Re-run immediately before scheduling (roles can change). Open: confirm `FROM_BLOCK` (the timelock's
-deploy block) for the stray-`DEFAULT_ADMIN` event reconstruction.
+Re-run immediately before scheduling (roles can change).
 
 ### Light clients & escrows (mainnet)
 

@@ -89,17 +89,28 @@ if [ -z "$vh" ]; then bad "could not read VERIFIER_HASH() from $REAL_VERIFIER"; 
   chk "route frozen == false" "${frozen:-?}" "false"
 fi
 
-echo "=== D. Escrows match the JSON (consistency) ==="
+echo "=== D. Escrows: JSON consistency + stray-escrow probe ==="
 ICS20="$(jq -re '.ics20Transfer.proxy' "$DEP")"
+json_escrows=""
 while IFS= read -r cid; do
   [ -n "$cid" ] || continue
   onchain="$(call "$ICS20" 'getEscrow(string)(address)' "$cid")"
+  json_escrows="$json_escrows $(lc "$onchain")"
   jsonesc="$(jq -r --arg c "$cid" '(.light_clients | to_entries[] | select(.value.clientId==$c) | .value.escrow) // empty' "$DEP")"
   if [ -n "$jsonesc" ] && [ "$jsonesc" != "$ZERO" ]; then chk "escrow $cid" "$onchain" "$jsonesc"
-  else echo "  INFO  escrow $cid -> $onchain (no JSON escrow recorded to compare)"; fi
+  else echo "  INFO  escrow $cid -> $onchain"; fi
 done < <(jq -r '.light_clients[].clientId // empty' "$DEP")
-echo "  NOTE: this compares the JSON clients only; enumerating escrows for clients NOT in the JSON needs an"
-echo "        event scan (see READINESS-REVIEW §6.2) — confirm the on-chain client set equals the JSON's."
+# Best-effort enumeration: probe the client-N series for an escrow that is NOT one of the JSON clients'
+# (getEscrow returns the zero address for an unregistered client). This closes the "rate-limiter holder on
+# a non-JSON escrow" blind spot for the auto-numbered series; a client with an unrelated name would still
+# need an event scan -- cross-checked against the prod relayer config (only the 2 migrated + dropped client-4).
+stray=0
+for n in $(seq 0 "${CLIENT_PROBE_MAX:-19}"); do
+  e="$(call "$ICS20" 'getEscrow(string)(address)' "client-$n")"
+  [ "$(lc "$e")" = "$ZERO" ] && continue
+  case " $json_escrows " in *" $(lc "$e") "*) ;; *) bad "stray escrow for client-$n: $e (NOT a JSON light_client)"; stray=1 ;; esac
+done
+[ "$stray" = 0 ] && ok "no stray escrows in the client-0..${CLIENT_PROBE_MAX:-19} series (set CLIENT_PROBE_MAX to widen)"
 
 echo
 echo "============================================================"

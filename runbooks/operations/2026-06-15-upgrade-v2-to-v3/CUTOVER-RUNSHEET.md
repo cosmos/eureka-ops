@@ -97,31 +97,33 @@ CLIENT_ID=cosmoshub-0      SP1_DEPLOY_COPY=true just deploy-light-client
 CLIENT_ID=ledger-mainnet-1 SP1_DEPLOY_COPY=true just deploy-light-client
 ```
 
-**5e. Relayer lockstep gate — against a CANARY, NOT prod.** ⚠️ **Do not cut the prod relayer here.**
-Cutting prod to `v2.0.0` (vkey `0x00d38536…`) while the on-chain clients still hold `0x009443d9…` makes
-every `updateClient`/`recvPacket`/`ackPacket` revert `VerificationKeyMismatch` for the **entire 72 h
-window** — a multi-day outage of both channels. The prod cut happens in **Phase C under halt** (step 7e).
-Here, only prove the *build* serves the right vkeys: point the gate at a **‹canary / non-live proof-api
-running the v2.0.0 build›**, scoped to the migrated clients (an *unscoped* run FAILs on the still-pre-v6.1
-`client-4`, and per-client `SRC_CHAIN` differs):
+**5e. Relayer lockstep gate — against the NEW-build proof-api; prod stays on the OLD build.** ⚠️ **Do not
+touch the prod relayer here.** It must stay on the **old** build through the 72 h delay so relaying
+continues normally (old proofs ⇿ not-yet-migrated clients). Cutting prod now would make every proof revert
+`VerificationKeyMismatch` for the whole window. We have an accessible **new-build proof-api** (latest
+sp1-programs / v6.1) — run the gate against *it*, scoped per migrated client (an unscoped run FAILs on the
+still-pre-v6.1 `client-4`; per-client `SRC_CHAIN` differs):
 ```bash
-PROOF_API_ADDR=‹canary:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
-PROOF_API_ADDR=‹canary:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
+PROOF_API_ADDR=‹new-build proof-api:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
+PROOF_API_ADDR=‹new-build proof-api:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
 ```
+(The vkeys are fixed and known; `sp1-vkeys` already proves them from the released ELFs — this just confirms
+the running service serves them. The prod relayer is upgraded to this same build **after** the execute lands,
+step 8a.)
 
-**5f. Quiesce relaying & packet state (plan the gap).** Owner: ‹…›. The relaying gap begins at the
-Phase-C cut and ends at resume (step 11). Before opening the window:
-- **Drain both channels** (`cosmoshub-0`, `ledger-mainnet-1`) to a clean state — relay all in-flight
-  packets to recv **and** ack, so nothing is left un-acked when relaying stops. Un-acked packets stall
-  (recv/ack/timeout all revert on the vkey mismatch) and their **escrowed funds stay locked** until catch-up.
-- **Confirm no packet's timeout falls inside the window.** A timeout that elapses during the gap cannot
-  be processed until after cutover.
-- **Record the post-cutover catch-up / timeout / refund procedure.** Storage survives the beacon upgrade
-  so nothing is lost — this is about not stranding users mid-window.
+**5f. Packet state — best-effort (no hard halt exists).** There is no clean "stop relaying" switch; the
+"cut" = **upgrading the relayer at step 8a, which briefly restarts it (minutes, not 72 h)**. So the relaying
+gap is short and in-flight packets are **delayed, not lost** — once the upgraded relayer is up it relays them
+against the migrated clients (commitments survive the byte-compatible upgrade; a timeout that lands in the gap
+is simply refunded once relaying resumes). Therefore:
+- **Best-effort** drain both channels before the window (fewer in-flight packets → shorter catch-up). A
+  guarantee of zero in-flight packets is **not** required.
+- Keep step 7→8a tight (execute → relayer upgrade) so the gap stays minimal.
+- Owner for the relayer upgrade + catch-up watch: ‹…›.
 
 **Trust-root gate (T-minus, re-run right before scheduling — roots can change):**
 ```bash
-ETH_RPC=<rpc> FROM_BLOCK=‹timelock deploy block› scripts/verify-roots.sh mainnet 1   # must be 11/11
+ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1   # timelock deploy block; must be 13/13
 ```
 
 ---
@@ -168,18 +170,12 @@ each `safeTxHash` (see appendix) before approving.
 ## Phase C — Wait the 72 h delay, then atomic execute (step 7)
 
 **Just before executing — in order:**
-1. Confirm the **72 h delay elapsed**.
-2. **Halt off-chain relaying** for both channels (owner ‹…›). This starts the gap (kept short: steps 7→11).
-3. **Cut the prod relayer to `v2.0.0` now** (bump `v1.2.0`→`v2.0.0` in
-   `ibc-manifests/relayer-api/config/prod/relayer.json`) and re-run the lockstep gate **against prod**:
+1. Confirm the **72 h delay elapsed**. (Leave the prod relayer **on the old build** — it's still relaying
+   normally; the upgrade happens *after* the execute, step 8a. There is no clean halt, and none is needed.)
+2. Re-run the gates — both must be clean:
    ```bash
-   PROOF_API_ADDR=‹prod:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
-   PROOF_API_ADDR=‹prod:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
-   ```
-4. Re-run the discovery gate (now **fail-closed** — must exit **0**) and the trust-root gate:
-   ```bash
-   python3 scripts/discover-v2-roles.py mainnet 1 && echo OK
-   ETH_RPC=<rpc> FROM_BLOCK=‹timelock deploy block› scripts/verify-roots.sh mainnet 1   # 11/11
+   python3 scripts/discover-v2-roles.py mainnet 1 && echo OK          # now fail-closed; must exit 0
+   ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1 # must be 13/13
    ```
 
 **Build + propose the atomic MultiSend** — the 6 core/migration executes + the **4** rate-limiter grant
@@ -202,7 +198,18 @@ EXTRA_TIMELOCK_OPS='…' LEDGER=1 MNEMONIC_INDEX=1 \
 
 ---
 
-## Phase D — Post-cutover (relaying still halted)
+## Phase D — Post-cutover
+
+**8a. Upgrade the prod relayer to the new build — right after the execute lands** (and after step 9 escrow-init,
+which is permissionless + quick, so transfers fully resume). This is the "cut": bump `v1.2.0`→`v2.0.0` (latest
+sp1-programs / v6.1) in `ibc-manifests/relayer-api/config/prod/relayer.json` and roll the relayer. It restarts
+(it does not cleanly stop), so the **relaying gap = execute → relayer up** (minutes). The migrated clients now
+hold the v6.1 vkeys, so the new-build proofs match. Confirm against **prod**:
+```bash
+PROOF_API_ADDR=‹prod:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
+PROOF_API_ADDR=‹prod:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
+```
+Watch the catch-up: in-flight packets queued during the restart relay through once it's up.
 
 **8. Register ICS27GMP** — a **2-of-5 Safe CALL tx from `0x4b46ea82…`** (NOT a broadcast recipe):
 ```bash
@@ -222,20 +229,21 @@ cast send <escrow_to> <data> --rpc-url <rpc> --private-key <funded EOA>   # or -
 cast call <escrow> 'authority()(address)' --rpc-url <rpc>                 # == <accessManager>
 ```
 
-**11. Verify**, then **resume relaying** only after both pass:
+**11. Verify** (relaying already transitioned at 8a; this confirms the end-state):
 ```bash
 just verify-deployment
 just check-sp1-verifier
 ```
 
-**13. Validate roles.** Populate `.accessManagerRoles.rateLimiters` with the re-granted holders
-first so role 5 matches, then:
+**13. Validate roles.** `.accessManagerRoles.rateLimiters` + `.rateLimitedEscrows` are **pre-staged** in
+`1.json` (so the validator hard-fails on a miss) — re-confirm they match the grants you actually folded,
+then:
 ```bash
 ETH_RPC=<rpc> FROM_BLOCK=<accessManager-deploy-block> python3 scripts/validate-v3-roles.py mainnet 1
-# expect ~33 passed / 0 failed (3 escrows)
+# expect ~33 passed / 0 failed (3 escrows; rate-limiter wiring now a hard gate via rateLimitedEscrows)
 ```
 
-**Resume packet relaying.** Fill the mainnet execution record in `RECORD.md`.
+**Confirm relaying caught up** (the post-8a catch-up drained). Fill the mainnet execution record in `RECORD.md`.
 
 ---
 
@@ -256,20 +264,23 @@ run `signer-verify.sh <chain> <safe> <nonce>`. Reject any step-7 proposal whose 
 The Safe holds `CANCELLER_ROLE`, so a scheduled op can be cancelled during the delay. Decide the path
 *before* the window so it isn't improvised:
 
-- **Found a problem during the 72 h delay (nothing executed yet):** the v2 system is still fully live and
-  un-halted. **Cancel** the affected scheduled op(s) and re-schedule (another 72 h):
+Relaying needs no special handling on abort — the prod relayer stays on the old build until step 8a, so a
+cancel/stand-down just means **never doing 8a** (relaying keeps working on v2 the whole time).
+
+- **Found a problem during the 72 h delay (nothing executed yet):** the v2 system is still fully live (the
+  relayer is untouched). **Cancel** the affected scheduled op(s) and re-schedule (another 72 h):
   ```bash
   cast call <timelock> 'hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)' … # the opId
   # propose a Safe CALL to the timelock: cancel(bytes32 id), 4-of-7 sign
   cast calldata 'cancel(bytes32)' <opId>
   ```
-- **Step-7 atomic execute reverts** (after halt): nothing landed (atomic). Diagnose, re-build, re-propose
-  *without* re-scheduling — the ops are still pending. Usual cause: a folded grant blob that doesn't
-  byte-match its scheduled op, or a schedule that never executed (the packer's pending/ready guard catches
-  most at build time). If it can't be fixed in-window: **resume v2 relaying and stand down** (the upgrade
-  simply hasn't happened), then regroup.
-- **Cannot proceed after the delay elapses:** choose explicitly — (a) resume v2 relaying and stand down,
-  or (b) cancel + reschedule a fresh 72 h round. Either way, **un-halt relaying** so the gap doesn't extend.
+- **Step-7 atomic execute reverts:** nothing landed (atomic), and the relayer is still on the old build, so
+  v2 keeps running. Diagnose, re-build, re-propose *without* re-scheduling — the ops are still pending. Usual
+  cause: a folded grant blob that doesn't byte-match its scheduled op, or a schedule that never executed (the
+  packer's pending/ready guard catches most at build time). If it can't be fixed in-window: **don't do 8a**
+  (the upgrade simply hasn't happened) and regroup.
+- **Cannot proceed after the delay elapses:** choose explicitly — (a) stand down (skip 8a; v2 keeps relaying),
+  or (b) cancel + reschedule a fresh 72 h round.
 
 ## Abort / failure notes
 

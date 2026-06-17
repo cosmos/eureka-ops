@@ -251,14 +251,17 @@ Severity labels are the reviewers'. Each finding states what I confirmed.
 Mechanical, low-risk, **no contract changes** — only ops tooling, validators, deployment JSON, and
 runbooks. Each item links to the finding(s) it closes.
 
-> **Implementation status (2026-06-17):** §6.1–§6.3 **implemented and tested** (incl. `verify-roots.sh`
-> 11/11 against mainnet, `validate-v3-roles` still 32/32 on testnet). §6.4 **drafted into
-> `CUTOVER-RUNSHEET.md`** — relayer cut deferred to Phase C with a Phase-A *canary* gate (F1), a
-> packet-quiesce step (F5), an explicit escrow-init submission (FA4), and a cancel/abort decision tree —
-> with the canary endpoint, the relaying-halt owner, and the timelock from-block left as `‹…›` for the §8
-> owners. §6.5 **done**: the exact **10-op fold** rehearsed on a mainnet fork (≈ **616k gas**, ~1 % of the
-> block limit; all 4 grants land). Remaining: the §8 open-decision inputs and the escrow full-enumeration
-> (event-based, §6.2).
+> **Implementation status (2026-06-17):** §6.1–§6.3 **implemented and tested** — `verify-roots.sh` now
+> **13/13** against mainnet (incl. the stray-`DEFAULT_ADMIN` event scan from block `22188631` and a
+> client-`0..19` escrow probe — **no stray admin, no stray escrow**), `validate-v3-roles` still 32/32 on
+> testnet. §6.4 **drafted into `CUTOVER-RUNSHEET.md`** and corrected to the real operational model
+> (confirmed with the owners): there is **no clean relaying halt** — the prod relayer stays on the *old*
+> build through the delay and is **upgraded after the execute** (step 8a, a brief restart, not a 72 h
+> outage); the Phase-A lockstep gate runs against the **available new-build proof-api** (F1); packet quiesce
+> is **best-effort** (in-flight packets are delayed-not-lost across the short gap, F5); plus the explicit
+> escrow-init submission (FA4) and a cancel/abort tree. §6.5 **done**: the exact **10-op fold** rehearsed on
+> a mainnet fork (≈ **616k gas**, ~1 %; all 4 grants land). **The §8 owner decisions are now resolved** (see
+> §8). Remaining is the live cutover itself + a few cutover-time `‹…›` endpoints.
 
 ### 6.1 Code fixes (one-liners / small)
 
@@ -356,11 +359,21 @@ beacon upgrade recipes would turn the "forgot step 4 → no-op self-upgrade" foo
 
 ---
 
-## 8. Open decisions (need an owner)
+## 8. Open decisions — RESOLVED (2026-06-17)
 
-- **Relayer canary (F1):** is there a non-live proof-api to run the Phase-A lockstep gate against, or do
-  we defer the entire relayer cut to Phase C under halt? Needs relayer/infra input.
-- **Packet quiesce (F5):** who drives draining both channels to a clean state pre-cutover, and what is
-  the acceptable in-flight/timeout exposure for the window?
-- **Stray-admin check (F4):** confirm the from-block for the timelock's `RoleGranted`/`RoleRevoked`
-  event reconstruction (deployment block of `0xb3999B2D`).
+- **Relayer canary (F1) — resolved.** There **is** an accessible new-build proof-api; the Phase-A lockstep
+  gate runs against it. And the model is corrected: there's **no clean halt** — the prod relayer stays on
+  the *old* build through the delay and is *upgraded* after the execute (a brief restart, not a 72 h
+  outage). Cutover-time `‹…›` values: the new-build proof-api endpoint and the prod endpoint.
+- **Packet quiesce (F5) — resolved.** No guarantee of zero in-flight packets is required: with the short
+  gap (relayer restart, not days) in-flight packets are **delayed-not-lost** and catch up post-8a; a
+  timeout in the gap is refunded once relaying resumes. Quiesce is **best-effort**. Owner for the relayer
+  upgrade + catch-up watch: `‹…›` (cutover-time).
+- **Stray-admin check (F4) — resolved.** Timelock deploy block = **`22188631`** (creation tx
+  `0x95d263cf…`); `verify-roots.sh` reconstructs `DEFAULT_ADMIN` from there and finds **no stray admin**.
+- **Proposer / SP1 tag / client-4 — decided earlier.** Proposer = the Ledger at `MNEMONIC_INDEX=1`; final
+  `v2.0.0` at the rc.2 commit (vkeys fixed/known); `client-4` dropped.
+
+**Remaining is operational, not decisional:** the live SP1 staging + scheduling + execute, the coordinator's
+signer-hash table (generated + second-reviewed at proposal time), and filling the `‹…›` endpoints. The §5.1
+must-resolve items are now all **implemented or resolved**.
