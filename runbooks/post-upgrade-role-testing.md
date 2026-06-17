@@ -98,7 +98,9 @@ reports escrow `setRateLimit` wiring (expected: still `ADMIN(0)` until Part 2.3 
 change and immediately post-mainnet-cutover. The pass **total scales with the resolved escrow
 count** (each escrow adds an `authority()` and a `setRateLimit` line), so judge the run by **`0
 failed`**, not an absolute total: testnet has 2 escrows (→ 32); **mainnet has 3 escrows**
-(`cosmoshub-0`, `ledger-mainnet-1`, `client-4`) → expect **~33 passed / 0 failed**.
+(`cosmoshub-0`, `ledger-mainnet-1`, `client-4`) → expect **~33 passed / 0 failed**. `client-4`'s
+*escrow* is still upgraded and validated even though its *light client* is dropped from the SP1 v6.1
+migration (the escrow beacon upgrade flips all escrow proxies regardless) — so all 3 still appear.
 
 > **After step 10 on mainnet, role `RATE_LIMITER(5)` is NOT empty** (testnet had zero holders,
 > which is why role 5 stayed empty there). Populate `.accessManagerRoles.rateLimiters` in

@@ -134,6 +134,63 @@ EOA `0x15C1e4924e4f8cE261B5D5cfEB9B96c4bF035DF9`.
 Confirmed on-chain 2026-06-16 (pre-upgrade). **Mainnet differs materially from testnet** — a
 **4-of-7 Safe** of hardware wallets and a **72 h timelock**; it cannot be driven autonomously.
 
+### Mainnet decisions locked (2026-06-16)
+
+Team answers to the pre-mainnet open questions, each with the evidence that backs it:
+
+1. **SP1 programs tag — resolved.** Final `sp1-programs v2.0.0` is cut **at the same commit hash as
+   `v2.0.0-rc.2`**. vkeys are a pure function of the ELFs, so the final tag's vkeys are
+   **byte-identical** to the rc.2 set already validated on testnet (`updateClient=0x00d38536…`,
+   membership `0x000bd8ec…`, ucAndMembership `0x009fe47d…`, misbehaviour `0x0010008d…`). Step 5b may
+   use either tag at that commit; the prod relayer must load the *same* build (step 5e).
+2. **`client-4` (`08-wasm-301`) — DROPPED**, not migrated to v6.1. Backed by the prod relayer
+   config (`ibc-manifests/relayer-api/config/prod/relayer.json`): the only mainnet (`dst/src "1"`)
+   `cosmos_to_eth`/`eth_to_cosmos` modules are **`cosmoshub-4`** and **`ledger-mainnet-1`** — there
+   is **no relayer module for `client-4`/`provider`/`08-wasm-301`**, so it is not a live relayed
+   channel. **Mainnet migrate set = `cosmoshub-0` + `ledger-mainnet-1` (2 clients).**
+3. **Dropped v2 capabilities — acceptable** (signed off). Loss of `TOKEN_OPERATOR` (in-place
+   IBCERC20 relabel; the `setCustomERC20`/`ERC20_CUSTOMIZER` replacement is retained by
+   `0x4b46ea82…`) and per-client `LIGHT_CLIENT_MIGRATOR` (migration now ADMIN-gated).
+4. **Proof-api endpoint + `SRC_CHAIN` module ids — pinned.** At cutover the proof-api is reached
+   via a **localhost** endpoint (k8s port-forward): `PROOF_API_ADDR=localhost:<port>`, `DST_CHAIN=1`.
+   From the prod config the `cosmos_to_eth` source (`SRC_CHAIN`) per eth-side client is
+   **`cosmoshub-0` ← `cosmoshub-4`** and **`ledger-mainnet-1` ← `ledger-mainnet-1`** (differs from
+   testnet, where the hub source is `provider`). The prod relayer currently loads
+   **`sp1-programs/v1.2.0`** ELFs (pre-v6.1); the lockstep cutover bumps those paths to the v2.0.0
+   build in `relayer-api/config/prod/relayer.json`.
+5. **ID/ERC20 customizer `0x4b46ea82…` is a Safe, not a Ledger.** Verified on-chain: **Safe v1.4.1,
+   2-of-5** (owners `0x7B5Cc5B7…`, `0x05A4De18…`, `0x75D608E8…`, `0xF550B712…`, `0x5622612b…`).
+   **Step 8 (`addIBCApp`) is a Safe transaction from `0x4b46ea82…`, not a direct/Ledger broadcast** —
+   the `register-ics27-gmp` recipe (a forge broadcast) cannot be used as-is. Build
+   `addIBCApp("gmpport", <mainnet ics27Gmp.proxy>)` (`to` = ICS26Router `0x3aF13430…`, value `0`) and
+   2-of-5 sign it from that Safe, after the router upgrade.
+6. **Governance-Safe proposer is a Ledger at index 1.** The owner who posts proposals to the 4-of-7
+   governance Safe `0x7B96CD54…` signs with a **Ledger at `MNEMONIC_INDEX=1`** (derivation
+   `m/44'/60'/0'/0/1`). **Implemented (2026-06-16):** `scripts/safe-propose.sh` now signs with a
+   Ledger via `LEDGER=1` / `--ledger` (`MNEMONIC_INDEX`, plus `MNEMONIC_DERIVATION_PATH` for a
+   Ledger Live path), taking precedence over `PRIVATE_KEY`; the `propose-schedule` / `safe-propose`
+   recipes inherit it through the env. So on mainnet:
+   `LEDGER=1 MNEMONIC_INDEX=1 just propose-schedule <recipe …>` and
+   `LEDGER=1 MNEMONIC_INDEX=1 just safe-propose <to> <data> <nonce> 1`. It blind-signs the 32-byte
+   `safeTxHash`, so enable blind signing on the device and confirm the on-device hash equals the
+   recipe's. (The step-7 execute is still `operation=DelegateCall` to MultiSendCallOnly
+   `0x9641d764…`.) Untestable without the device here — do one testnet dry-run with the real Ledger
+   before the window.
+7. **Execution-path hardening — IMPLEMENTED (2026-06-16).** Two defense-in-depth guards landed:
+   - `safe.just` `execute-timelock-multisend` (the packer behind `execute-v3-upgrade-multisend`) now
+     verifies **every** packed sub-op is a *pending* TimelockController operation on-chain
+     (`isOperationPending`) before building the bundle — catching a mistyped/omitted client id, a
+     forgotten schedule, or a folded grant whose `execute` blob doesn't byte-match its scheduled op
+     (all of which otherwise pack into a silently-shorter-but-valid MultiSend or revert only at
+     execute time). `isOperationPending` is true regardless of whether the 72 h delay has elapsed, so
+     it still passes while previewing the `safeTxHash`. Skipped with a loud warning if no RPC is set.
+   - `RevokeRole.sol` refuses to revoke `ADMIN_ROLE` (id 0) unless `ALLOW_REVOKE_ADMIN=true`, so a
+     fat-fingered `REVOKE_ROLE=0` can't brick governance.
+   Validated on-chain against a real (Sepolia-fork) timelock: a freshly-scheduled op →
+   `isOperationPending=true` (passes, even pre-delay); an unscheduled op → `false` (refused). Still
+   wants a full mainnet-fork `shadow-v2-to-v3-mainnet-timelock` rehearsal as part of cutover prep
+   (the testnet rehearsal can't run now — its JSON is post-upgrade).
+
 | Thing | Address / value |
 | --- | --- |
 | AccessManager | **not deployed** (`0x000…0`) — role testing is **post-cutover only** |
@@ -154,15 +211,16 @@ clients.**
 | --- | --- | --- | --- |
 | `cosmoshub-0` | `08-wasm-1369` | `0x0fA75C2c49d7dB7ed62c5Fb70bF78ba614aE6A89` | `0x2bB76Cb5EaB856ffb548320509266c5BfeD46f82` (direct v5.0.0) |
 | `ledger-mainnet-1` | `08-wasm-0` | `0xC76944B0159D7Dd5c4cF6936b0f45E8de9b34092` | `0xbB3FeAbf2eAE13fcC97451877a2678895D8ffaA5` (direct v5.0.0) |
-| `client-4` | `08-wasm-301` | `0x3f36Fd49251475aC17bB680D56F412Bf81Aa5778` | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` (gateway, already set) |
+| `client-4` *(DROPPED)* | `08-wasm-301` | `0x3f36Fd49251475aC17bB680D56F412Bf81Aa5778` | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` (gateway, already set) |
 
 > **The committed `deployments/mainnet/1.json` is still in PRE-v6.1 state** — all three clients
 > carry the *current* on-chain vkeys (`updateClient=0x009443d9…`, etc.), not the v6.1 vkeys
 > (`0x00d38536…`) that testnet migrated to. Step 5 of the procedure (regenerate trusted state,
 > write v6.1 vkeys, repoint `.verifier` to the gateway for the two clients still on direct v5
-> verifiers) **must still be done for mainnet**. **`client-4` is a scope decision** — its chainId
-> is the generic `"provider"` and its `latestHeight` is frozen; confirm whether `08-wasm-301` is a
-> live relayed channel before deciding to migrate it or consciously drop it (record the decision).
+> verifiers) **must still be done for mainnet** — but only for the two migrated clients. **`client-4`
+> is DROPPED** (decided 2026-06-16; see "Mainnet decisions locked"): its chainId is the generic
+> `"provider"`, its `latestHeight` is frozen, and the prod relayer config has no module for it, so
+> it is not a live relayed channel. **The migrate set is `cosmoshub-0` + `ledger-mainnet-1` only.**
 
 The SP1 v6.1 Groth16 verifier infrastructure on mainnet is the **same gateway/real-verifier pair
 as testnet** (gateway `0x397A5f7f…` → real `0xb69f2584…`, selector `0x4388a21c`); the broken
@@ -233,8 +291,9 @@ _Pending. Populate during/after the mainnet run, mirroring the testnet record ab
 - [ ] v3 AccessManager + ICS27GMP deploy addresses & tx hashes
 - [ ] 4 v3 implementation addresses & tx hashes
 - [ ] SP1 v6.1 client deploy addresses & tx hashes (per migrated client); final v6.1 vkeys & the
-      `sp1-programs` tag actually used (rc.2 vs final — record the go/no-go decision)
-- [ ] `client-4` scope decision (migrated / dropped) and rationale
+      `sp1-programs` tag actually used (decided 2026-06-16: final `v2.0.0` cut at the **same commit
+      as `v2.0.0-rc.2`** → vkeys byte-identical; record which tag string was passed)
+- [x] `client-4` scope decision — **DROPPED** (not relayed in prod; decided 2026-06-16)
 - [ ] Safe schedule nonces and the atomic `execTransaction` hash
 - [ ] ICS27GMP registration tx; escrow `initializeV2()` txs
 - [ ] Rate-limiter re-grant (folded) — final `(client_id, holder)` set granted
