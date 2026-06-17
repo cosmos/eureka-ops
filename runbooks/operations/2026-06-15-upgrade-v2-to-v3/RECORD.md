@@ -171,11 +171,14 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
    Ledger Live path), taking precedence over `PRIVATE_KEY`; the `propose-schedule` / `safe-propose`
    recipes inherit it through the env. So on mainnet:
    `LEDGER=1 MNEMONIC_INDEX=1 just propose-schedule <recipe …>` and
-   `LEDGER=1 MNEMONIC_INDEX=1 just safe-propose <to> <data> <nonce> 1`. It blind-signs the 32-byte
-   `safeTxHash`, so enable blind signing on the device and confirm the on-device hash equals the
-   recipe's. (The step-7 execute is still `operation=DelegateCall` to MultiSendCallOnly
-   `0x9641d764…`.) Untestable without the device here — do one testnet dry-run with the real Ledger
-   before the window.
+   `LEDGER=1 MNEMONIC_INDEX=1 just safe-propose <to> <data> <nonce> 1`. The Ledger signs the Safe
+   **EIP-712 `SafeTx` typed data** (foundry's Ledger signer cannot sign a raw hash —
+   `sign_hash` is unsupported), deriving the same `safeTxHash` on-device; enable blind signing /
+   EIP-712 on the Ethereum app. The script then re-checks the device signature recovers to the
+   printed `safeTxHash` before posting. (The step-7 execute is still `operation=DelegateCall` to
+   MultiSendCallOnly `0x9641d764…`.) **Confirmed on a real Ledger (2026-06-17)** via the script's
+   `--dry-run` (EIP-712 sign + recovery check passed); the only unrun leg is the actual POST to the
+   Safe Transaction Service.
 7. **Execution-path hardening — IMPLEMENTED (2026-06-16).** Two defense-in-depth guards landed:
    - `safe.just` `execute-timelock-multisend` (the packer behind `execute-v3-upgrade-multisend`) now
      verifies **every** packed sub-op is a *pending* TimelockController operation on-chain

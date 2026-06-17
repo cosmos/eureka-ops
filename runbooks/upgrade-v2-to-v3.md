@@ -273,8 +273,10 @@ just safe-propose <multisend_to> <multisend_data> <execute_safe_nonce> 1
 > `LEDGER=1 MNEMONIC_INDEX=1 just safe-propose <multisend_to> <multisend_data> <nonce> 1` (and
 > `LEDGER=1 MNEMONIC_INDEX=1 just propose-schedule …` for the step-6 schedules) — or (b) reconstruct
 > the bundle in the Safe Transaction Builder as a **delegatecall to MultiSendCallOnly `0x9641d764…`**.
-> The Ledger blind-signs the 32-byte `safeTxHash`, so enable blind signing and confirm the on-device
-> hash equals the recipe's recomputed value; do one testnet dry-run with the real device first. In every case each
+> The Ledger signs the Safe **EIP-712 `SafeTx` typed data** (it cannot sign a raw hash — foundry's
+> Ledger signer rejects `sign_hash`), deriving the same `safeTxHash` on-device; enable blind signing /
+> EIP-712 on the Ethereum app. The script re-checks the device signature recovers to the printed
+> `safeTxHash` before posting (the EIP-712 sign path was confirmed on a real Ledger 2026-06-17). In every case each
 > signer must verify **on-device** that `to == 0x9641d764…`, `operation == DelegateCall`, and the
 > `safeTxHash` equals the recipe's recomputed value (next paragraph) **before** approving. Assign
 > explicit owners for halting and resuming relaying around the window, and run steps 7 → 9 → 11

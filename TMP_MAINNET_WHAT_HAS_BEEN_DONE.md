@@ -110,13 +110,15 @@ Beyond the testnet tooling (carried over), three changes were made specifically 
 4-of-7 / 72 h mainnet path safe, all rehearsed on a mainnet fork (below):
 
 - **Ledger proposer signing** — `scripts/safe-propose.sh` gained a Ledger branch
-  (`LEDGER=1` / `--ledger`, `MNEMONIC_INDEX`, `MNEMONIC_DERIVATION_PATH`) that blind-signs the
-  EIP-712 `safeTxHash`; it takes precedence over `PRIVATE_KEY` and is inherited by the
-  `propose-schedule` / `safe-propose` recipes through the env. Mainnet proposer uses
-  `LEDGER=1 MNEMONIC_INDEX=1 just propose-schedule …` / `… just safe-propose …`. The
-  `PRIVATE_KEY` path is byte-for-byte unchanged. **Not yet exercised with a physical device** —
-  do one testnet dry-run with the real Ledger before the window (the device must have blind
-  signing enabled; confirm the on-device hash equals the recipe's).
+  (`LEDGER=1` / `--ledger`, `MNEMONIC_INDEX`, `MNEMONIC_DERIVATION_PATH`) that signs the Safe
+  **EIP-712 `SafeTx` typed data** — a Ledger cannot sign a raw hash (foundry rejects `sign_hash`),
+  so the device derives the same `safeTxHash` itself; the script then re-checks the device signature
+  recovers to that `safeTxHash` before posting. It takes precedence over `PRIVATE_KEY` and is
+  inherited by the `propose-schedule` / `safe-propose` recipes through the env. Mainnet proposer uses
+  `LEDGER=1 MNEMONIC_INDEX=1 just propose-schedule …` / `… just safe-propose …`. The `PRIVATE_KEY`
+  path is byte-for-byte unchanged. **Confirmed on a real Ledger (2026-06-17)** via the script's
+  `--dry-run` (EIP-712 sign + recovery check pass; enable blind signing / EIP-712 on the Ethereum
+  app). Only the actual POST to the Safe Transaction Service is unrun.
 - **Packer schedule-state guard** — `safe.just` `execute-timelock-multisend` now verifies on-chain
   that **every** packed sub-op is a *pending* `TimelockController` operation
   (`isOperationPending`) before building the bundle. This catches a mistyped/unscheduled client
@@ -200,8 +202,9 @@ pre-delay op → guard **passes** — the packer guard is validated on the actua
 
 - [ ] SP1 v6.1 staging (step 5) for the two migrated clients — not yet done.
 - [ ] Prod relayer cut to the v2.0.0 build; `check-relayer-vkeys` green against the prod proof-api.
-- [ ] One **Ledger device dry-run** on testnet to confirm the `safe-propose.sh` `--ledger` branch
-      end-to-end (blind signing enabled, on-device hash matches).
+- [x] Ledger `--dry-run` confirmed on a real device (2026-06-17, EIP-712 path; recovery check
+      passed). Remaining: the actual POST to the Safe service — optional to rehearse on a throwaway
+      Sepolia Safe with the Ledger as owner, else it happens live at cutover.
 - [ ] Fresh `RATE_LIMITER` snapshot immediately before scheduling (holders can change).
 - [ ] Confirm the proposer Ledger path/index and that the 2-of-5 customizer Safe owners are ready
       for the step-8 signing.

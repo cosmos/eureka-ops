@@ -13,10 +13,11 @@ set -euo pipefail
 # If --nonce is omitted it is auto-queried as max(on-chain nonce, highest already-queued nonce + 1) from the
 # tx service, so proposing several in a row queues them at consecutive nonces instead of colliding.
 #
-# Signer: a Ledger (--ledger / LEDGER=1) or a raw PRIVATE_KEY. Both sign the EIP-712 safeTxHash directly
-# (--no-hash) and post a v in {27,28} "EIP-712" Safe signature. On a Ledger this is a BLIND-SIGN of the 32-byte
-# hash, so enable blind signing on the device and confirm the hash it shows equals the safeTxHash printed below
-# (== the schedule recipe's recomputed value). --ledger takes precedence over PRIVATE_KEY.
+# Signer: a Ledger (--ledger / LEDGER=1) or a raw PRIVATE_KEY; both post a v in {27,28} "EIP-712" Safe
+# signature over the safeTxHash. PRIVATE_KEY signs the hash directly (--no-hash). A Ledger cannot sign a raw
+# hash ("sign_hash not supported"), so it is handed the Safe EIP-712 typed data and derives the same
+# safeTxHash on-device (enable blind signing / EIP-712 on the Ethereum app); the script then re-checks the
+# device signature recovers to the printed safeTxHash before posting. --ledger takes precedence over PRIVATE_KEY.
 # Env (used when the flag is omitted):
 #   EUREKA_ENVIRONMENT, EUREKA_CHAIN   -> deployments/<env>/<chain>.json (.safe is the proposer Safe)
 #   PRIVATE_KEY                        -> the proposing owner's key (signs the safeTxHash)
@@ -123,21 +124,51 @@ message="$(cast abi-encode 'x(bytes32,address,uint256,bytes32,uint8,uint256,uint
 message_hash="$(cast keccak "$message")"
 safe_tx_hash="$(cast keccak "$(cast concat-hex 0x1901 "$domain" "$message_hash")")"
 
-# Signer selection: a Ledger (--ledger / LEDGER=1, takes precedence) or a raw PRIVATE_KEY. Both produce a
-# direct EIP-712 signature over the safeTxHash (--no-hash); for a Ledger this is a blind-sign of the 32-byte
-# hash, so the device must have blind signing enabled and the operator must confirm the on-device hash equals
-# $safe_tx_hash above.
-wallet_args=()
+# Signer selection: a Ledger (--ledger / LEDGER=1, takes precedence) or a raw PRIVATE_KEY. The wallet-selector
+# flags (hw_args) are shared by `cast wallet address` and `cast wallet sign`; the SIGN call differs by signer.
+hw_args=()
 if [ "$use_ledger" = 1 ]; then
-  wallet_args=(--ledger --mnemonic-index "$mnemonic_index")
-  [ -n "$hd_path" ] && wallet_args+=(--mnemonic-derivation-path "$hd_path")
-  echo "Signing with Ledger (mnemonic-index $mnemonic_index${hd_path:+, path $hd_path}); confirm the hash on the device..." >&2
+  hw_args=(--ledger --mnemonic-index "$mnemonic_index")
+  [ -n "$hd_path" ] && hw_args+=(--mnemonic-derivation-path "$hd_path")
 else
   [ -n "${PRIVATE_KEY:-}" ] || { echo "no signer: set PRIVATE_KEY, or pass --ledger (LEDGER=1) for a hardware wallet" >&2; exit 1; }
-  wallet_args=(--private-key "$PRIVATE_KEY")
+  hw_args=(--private-key "$PRIVATE_KEY")
 fi
-sender="$(cast wallet address "${wallet_args[@]}")"
-signature="$(cast wallet sign "${wallet_args[@]}" --no-hash "$safe_tx_hash")"
+sender="$(cast wallet address "${hw_args[@]}")"
+
+if [ "$use_ledger" = 1 ]; then
+  # A Ledger cannot sign a raw hash (foundry: "operation `sign_hash` is not supported by the signer"); it signs
+  # EIP-712 typed data. So hand the device the Safe `SafeTx` typed data and let it derive the SAME safeTxHash and
+  # sign it -- producing the identical v in {27,28} signature the --no-hash private-key path makes. (Verified
+  # offline that this typed data hashes to $safe_tx_hash; the post-sign check below re-asserts it on the device
+  # output.) The Safe domain is chainId + verifyingContract only (matches DOMAIN_TYPEHASH above).
+  eip712_file="$(mktemp -t safetx_eip712.XXXXXX)"
+  trap 'rm -f "$eip712_file"' EXIT
+  cat > "$eip712_file" <<JSON
+{ "types": {
+    "EIP712Domain": [ {"name":"chainId","type":"uint256"}, {"name":"verifyingContract","type":"address"} ],
+    "SafeTx": [ {"name":"to","type":"address"}, {"name":"value","type":"uint256"}, {"name":"data","type":"bytes"},
+      {"name":"operation","type":"uint8"}, {"name":"safeTxGas","type":"uint256"}, {"name":"baseGas","type":"uint256"},
+      {"name":"gasPrice","type":"uint256"}, {"name":"gasToken","type":"address"}, {"name":"refundReceiver","type":"address"},
+      {"name":"nonce","type":"uint256"} ] },
+  "primaryType": "SafeTx",
+  "domain": { "chainId": $chain, "verifyingContract": "$safe_cs" },
+  "message": { "to": "$to", "value": "0", "data": "$data", "operation": $operation,
+    "safeTxGas": "0", "baseGas": "0", "gasPrice": "0",
+    "gasToken": "$ZERO", "refundReceiver": "$ZERO", "nonce": "$nonce" } }
+JSON
+  echo "Signing with Ledger (mnemonic-index $mnemonic_index${hd_path:+, path $hd_path}) via EIP-712; confirm on the device. safeTxHash: $safe_tx_hash" >&2
+  signature="$(cast wallet sign "${hw_args[@]}" --data --from-file "$eip712_file")"
+  # Safety net: the device-derived signature MUST recover to $safe_tx_hash (the value printed for signers and
+  # used by the Safe). If it does not, the typed data and the posted hash disagree -- refuse rather than post a
+  # proposal the Safe will reject.
+  if ! cast wallet verify --no-hash --address "$sender" "$safe_tx_hash" "$signature" >/dev/null 2>&1; then
+    echo "Ledger signature does not recover to safeTxHash $safe_tx_hash; refusing to post." >&2
+    exit 1
+  fi
+else
+  signature="$(cast wallet sign "${hw_args[@]}" --no-hash "$safe_tx_hash")"
+fi
 
 # Best-effort: confirm the signer is an owner and surface the on-chain nonce (proposing as a non-owner is
 # rejected by the service, but failing early is friendlier).
