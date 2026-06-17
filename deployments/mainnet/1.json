@@ -64,6 +64,14 @@
     ],
     "erc20Customizers": [
       "0x4b46ea82D80825CA5640301f47C035942e6D9A46"
+    ],
+    "rateLimiters": [
+      "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
+      "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+    ],
+    "rateLimitedEscrows": [
+      "cosmoshub-0",
+      "ledger-mainnet-1"
     ]
   },
   "ics27Gmp": {
@@ -74,6 +82,7 @@
   "light_clients": {
     "0": {
       "clientId": "cosmoshub-0",
+      "proofApiSrcChain": "cosmoshub-4",
       "implementation": "0x2e4600f0312D791251821d5b6195c0D8578fa25D",
       "verifier": "0x2bB76Cb5EaB856ffb548320509266c5BfeD46f82",
       "counterpartyClientId": "08-wasm-1369",
@@ -90,6 +99,7 @@
     },
     "1": {
       "clientId": "ledger-mainnet-1",
+      "proofApiSrcChain": "ledger-mainnet-1",
       "implementation": "0x279ad6E89DECDf0eBD20050FdD082EE1d20d3E0f",
       "verifier": "0xbB3FeAbf2eAE13fcC97451877a2678895D8ffaA5",
       "counterpartyClientId": "08-wasm-0",

@@ -13,8 +13,11 @@ set -euo pipefail
 #
 # --expect <hash>: paste the safeTxHash from the coordinator's table; the script does a full byte-for-byte
 # compare and prints one unmissable PASS or REJECT (and exits non-zero on REJECT). USE IT.
+# --expect-subcalls <N>: for the step-7 MultiSend, REJECT unless it has exactly N sub-calls (catches an
+# omitted/extra op the per-op pending guard can't see; e.g. N=10 = 4 core + 2 migrations + 4 rate-limiter).
 #
-# Exit code: 0 only if no REJECT condition fired (and, if --expect was given, it matched). Non-zero otherwise.
+# Exit code: 0 only if no REJECT condition fired (and, if --expect/--expect-subcalls were given, they matched).
+# A duplicate same-nonce result (>1 tx at the nonce) is also a non-zero exit. Non-zero otherwise.
 
 ZERO=0x0000000000000000000000000000000000000000
 DOMAIN_TYPEHASH=0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218
@@ -85,10 +88,13 @@ decode_inner() {
         [ "$op" = 00 ] || rej "MultiSend sub-call $i is operation=$op (not CALL)"
         [ "$(lc "$to")" = "$TIMELOCK_ADDR" ] || rej "MultiSend sub-call $i targets $to, not the timelock $TIMELOCK_ADDR"
         printf '%s' "$val" | grep -Eq '^0+$' || rej "MultiSend sub-call $i carries non-zero value"
-        [ "$(lc "$isel")" = 0x134008d3 ] || warn "MultiSend sub-call $i is not a timelock execute() ($isel)"
+        [ "$(lc "$isel")" = 0x134008d3 ] || rej "MultiSend sub-call $i is not a timelock execute() ($isel)"
         pos=$(( pos + 170 + dbytes ))
       done
       echo "    ($i sub-call(s); each must be a timelock execute() — confirm the count matches expectations)"
+      if [ -n "$EXPECT_SUBCALLS" ] && [ "$i" != "$EXPECT_SUBCALLS" ]; then
+        rej "MultiSend has $i sub-calls, expected $EXPECT_SUBCALLS (--expect-subcalls) -- an op may be missing or extra"
+      fi
       ;;
     0x5f516889)              # addIBCApp(string,address)
       local f port app; f="$(cast decode-calldata 'addIBCApp(string,address)' "$data" 2>/dev/null)"
@@ -102,6 +108,7 @@ decode_inner() {
 
 # --- core: print hashes + decoded action + verdict for one tx -------------------------------------------
 EXPECT=""
+EXPECT_SUBCALLS=""
 verify_one() {
   REJECTS=(); WARNS=()
   local to="$1" value="$2" data="$3" operation="$4" nonce="$5"
@@ -174,6 +181,7 @@ if [ "$manual" = 1 ]; then
   while [ "$#" -gt 0 ]; do case "$1" in
     --to) to="$2"; shift 2;; --data) data="$2"; shift 2;; --operation) operation="$2"; shift 2;;
     --nonce) nonce="$2"; shift 2;; --value) value="$2"; shift 2;; --expect) EXPECT="$2"; shift 2;;
+    --expect-subcalls) EXPECT_SUBCALLS="$2"; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;; esac; done
   [ -n "$to" ] && [ -n "$operation" ] && [ -n "$nonce" ] || { echo "manual mode needs --to --operation --nonce (and --data)" >&2; exit 2; }
   verify_one "$to" "$value" "$data" "$operation" "$nonce" 0 0 0 "$ZERO" "$ZERO"; exit $?
@@ -181,7 +189,9 @@ fi
 
 # fetch-by-nonce
 nonce="$1"; shift || true
-while [ "$#" -gt 0 ]; do case "$1" in --expect) EXPECT="$2"; shift 2;; *) echo "unknown arg: $1" >&2; exit 2;; esac; done
+while [ "$#" -gt 0 ]; do case "$1" in
+  --expect) EXPECT="$2"; shift 2;; --expect-subcalls) EXPECT_SUBCALLS="$2"; shift 2;;
+  *) echo "unknown arg: $1" >&2; exit 2;; esac; done
 command -v curl >/dev/null || { echo "ERROR: 'curl' not found (needed for fetch mode; or use manual mode)" >&2; exit 2; }
 command -v jq   >/dev/null || { echo "ERROR: 'jq' not found (only needed for fetch mode — use manual mode, which needs just cast)" >&2; exit 2; }
 
@@ -199,12 +209,13 @@ resp="$(fetch "$url" 2>/dev/null)" || { echo "ERROR: could not reach the Safe se
 
 n="$(printf '%s' "$resp" | jq '.results | length')"
 [ "$n" -gt 0 ] || { echo "No pending transaction found at nonce $nonce for $safe_cs." >&2; exit 1; }
+rc=0
 if [ "$n" -gt 1 ]; then
   echo "##### STOP: $n different transactions exist at nonce $nonce. This is ABNORMAL for this upgrade." >&2
   echo "Do NOT sign. Re-run with --expect <the table hash> so only the matching one is accepted, and tell the coordinator." >&2
+  rc=1   # duplicate same-nonce is abnormal: force a non-zero exit even if a sibling passes its invariants
 fi
 
-rc=0
 for (( i=0; i<n; i++ )); do
   IFS=$'\t' read -r to value data operation nonce_i safeTxGas baseGas gasPrice gasToken refundReceiver apihash <<EOF
 $(printf '%s' "$resp" | jq -r ".results[$i] | [.to,(.value//\"0\"),(.data//\"0x\"),(.operation|tostring),(.nonce|tostring),(.safeTxGas//\"0\"),(.baseGas//\"0\"),(.gasPrice//\"0\"),(.gasToken//\"$ZERO\"),(.refundReceiver//\"$ZERO\"),(.safeTxHash//\"\")] | @tsv")

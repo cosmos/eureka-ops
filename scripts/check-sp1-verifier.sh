@@ -91,9 +91,15 @@ while IFS= read -r client; do
   vh="$(cast call "$canon_ver" "VERIFIER_HASH()(bytes32)" --rpc-url "$rpc" 2>/dev/null || true)"
   if [ -z "$vh" ]; then echo "FAIL $cid: could not read VERIFIER_HASH() from $canon_ver"; fail=1; continue; fi
   selector="${vh:0:10}" # 0x + 4 bytes
-  routed="$(cast call "$verifier" "routes(bytes4)(address,bool)" "$selector" --rpc-url "$rpc" 2>/dev/null | head -1 || true)"
+  route_raw="$(cast call "$verifier" "routes(bytes4)(address,bool)" "$selector" --rpc-url "$rpc" 2>/dev/null || true)"
+  routed="$(printf '%s\n' "$route_raw" | sed -n '1p')"   # routes() returns (address verifier, bool frozen)
+  frozen="$(printf '%s\n' "$route_raw" | sed -n '2p')"
   if [ "$(lc "$routed")" != "$(lc "$canon_ver")" ]; then
     echo "FAIL $cid: gateway $verifier routes selector $selector to '$routed', expected the $sp1_version $algo verifier $canon_ver"; fail=1; continue
+  fi
+  # A frozen route reverts every proof (SP1VerifierGateway.RouteIsFrozen), even though the address matches.
+  if [ "$frozen" = "true" ]; then
+    echo "FAIL $cid: gateway route for $selector is FROZEN (verifier $routed) -- proofs would revert RouteIsFrozen"; fail=1; continue
   fi
   reported="$(cast call "$routed" "VERSION()(string)" --rpc-url "$rpc" 2>/dev/null | tr -d '"' || true)"
   if [ "$reported" != "$sp1_version" ]; then

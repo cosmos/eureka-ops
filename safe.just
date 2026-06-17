@@ -150,8 +150,15 @@ execute-timelock-multisend nonce ops:
     assert_pending() {
       local data_hex="${1#0x}"
       if [ -z "${FOUNDRY_ETH_RPC_URL:-${ETH_RPC:-}}" ]; then
-        echo "WARNING: no RPC set (FOUNDRY_ETH_RPC_URL) -- SKIPPING the on-chain schedule-state check for a sub-op." >&2
-        return 0
+        # RPC is mandatory: the schedule-state guard is the thing standing between a mistyped/omitted/stale op
+        # and a 72 h-wasting revert, so a missing RPC is a hard stop, not a skip. ALLOW_NO_RPC=1 is the explicit
+        # escape hatch for an offline calldata preview ONLY -- never for the real execute.
+        if [ -n "${ALLOW_NO_RPC:-}" ]; then
+          echo "WARNING: ALLOW_NO_RPC set -- SKIPPING the on-chain schedule-state check (offline preview only; NEVER for the real execute)." >&2
+          return 0
+        fi
+        echo "ERROR: no RPC (FOUNDRY_ETH_RPC_URL/ETH_RPC) set -- the schedule-state guard cannot run; refusing to build the bundle. Set an RPC (or ALLOW_NO_RPC=1 for an offline preview only)." >&2
+        exit 1
       fi
       local decoded target value payload predecessor salt opid pending
       if ! decoded=$({{cast_binary}} decode-calldata "execute(address,uint256,bytes,bytes32,bytes32)" "0x${data_hex}" 2>/dev/null); then
@@ -171,6 +178,17 @@ execute-timelock-multisend nonce ops:
         echo "  It was never scheduled (mistyped client id / forgotten schedule), a folded grant's execute blob" >&2
         echo "  does not byte-match its scheduled op, or it already executed. Fix before building the bundle." >&2
         exit 1
+      fi
+      # At the actual execute (set REQUIRE_READY=1) also require the op to be READY -- the 72 h delay elapsed.
+      # During scheduling / the delay window / a preview it is pending-but-not-ready (correct), so this is opt-in
+      # and must NOT be set when previewing the safeTxHash before the delay passes.
+      if [ -n "${REQUIRE_READY:-}" ]; then
+        local ready
+        ready=$({{cast_binary}} call "$timelock" "isOperationReady(bytes32)(bool)" "$opid" | awk '{print $1}')
+        if [ "$ready" != "true" ]; then
+          echo "refusing to pack: op $opid is pending but NOT ready (isOperationReady=$ready) -- the timelock delay has not elapsed. Wait it out before executing." >&2
+          exit 1
+        fi
       fi
     }
 

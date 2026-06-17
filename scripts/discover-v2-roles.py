@@ -234,3 +234,10 @@ if unknown:
 
 print(f"\n{'='*70}\n{'REVIEW NEEDED' if (issues or unknown) else 'JSON matches live v2 holders for all migrated roles'}"
       f"  ({issues} mismatch group(s), {len(unknown)} unidentified role(s))")
+
+# Fail-closed: this is the completeness gate the rate-limiter pre-stage and the relayer-set story lean on,
+# so a mismatch (a v2 holder MISSING from the JSON => would be silently dropped) must be a hard stop, not a
+# human-read warning. Unidentified role hashes are also surfaced as non-zero so they are consciously cleared
+# (e.g. the intentionally-dropped per-client migrator roles) rather than skimmed past.
+if issues or unknown:
+    sys.exit(1)

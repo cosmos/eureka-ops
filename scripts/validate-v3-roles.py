@@ -159,12 +159,22 @@ for label, addr in targets:
     a = cast("call", addr, "authority()(address)")
     ok(f"{label} authority == AccessManager") if a.lower()==AM.lower() else bad(f"{label} authority={a}")
 
-# D. rate-limiter target wiring (informational — TODO #559)
-print("\n=== D. Escrow setRateLimit gating (informational) ===")
+# D. rate-limiter target wiring. CONDITIONAL gate: escrows listed in `.accessManagerRoles.rateLimitedEscrows`
+# MUST have setRateLimit wired to RATE_LIMITER(5) — a hard FAIL otherwise. This is the per-escrow wiring check
+# that role-5 *membership* (section B) does NOT cover: RATE_LIMITER is manager-wide, so granting the role to
+# every holder leaves membership complete even if an intended escrow was never wired. Escrows NOT in the list
+# stay informational, so the by-design pre-grant state (TODO #559: escrows unwired until granted; testnet has
+# an empty list) is unchanged and still passes.
+RATE_LIMITED = {c.strip() for c in ROLES.get("rateLimitedEscrows", []) if c.strip()}
+print("\n=== D. Escrow setRateLimit gating ===")
 for cid, e in escrows.items():
     r = int(cast("call", AM, "getTargetFunctionRole(address,bytes4)(uint64)", e, SET_RATE_LIMIT_SEL))
-    note = "RATE_LIMITER(5) — wired" if r == 5 else f"{ROLE_NAMES.get(r,'?')}({r}) — NOT yet wired to RATE_LIMITER (grant recipe wires it)"
-    print(f"  INFO  escrow {cid}: setRateLimit -> {note}")
+    if cid in RATE_LIMITED:
+        label = f"escrow {cid}: setRateLimit -> RATE_LIMITER(5) (required by rateLimitedEscrows)"
+        ok(label) if r == 5 else bad(f"escrow {cid}: setRateLimit -> {ROLE_NAMES.get(r,'?')}({r}), expected RATE_LIMITER(5) — NOT wired")
+    else:
+        note = "RATE_LIMITER(5) — wired" if r == 5 else f"{ROLE_NAMES.get(r,'?')}({r}) — not wired (informational)"
+        print(f"  INFO  escrow {cid}: setRateLimit -> {note}")
 
 print(f"\n{'='*60}\nSUMMARY: {len(passes)} passed, {len(fails)} failed")
 if fails:

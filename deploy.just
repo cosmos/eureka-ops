@@ -256,11 +256,20 @@ deploy-fresh-light-client-state:
     command -v grpcurl >/dev/null || { echo "grpcurl not found (needed to call the proof-api)"; exit 1; }
     command -v python3 >/dev/null || { echo "python3 not found (needed to decode the response)"; exit 1; }
 
-    read -rp "Client ID to generate fresh state for: " client_id
+    client_id="${CLIENT_ID:-}"
+    [ -n "$client_id" ] || read -rp "Client ID to generate fresh state for: " client_id
     entry=$(jq -c --arg cid "$client_id" '.light_clients | to_entries[] | select(.value.clientId==$cid)' "$deployment_file")
     test -n "$entry" || { echo "Client ID '$client_id' not found in $deployment_file"; exit 1; }
     idx=$(jq -r '.key' <<<"$entry")
     echo "Found '$client_id' at light_clients[\"$idx\"]"
+    # Guard against a swapped client/source pair (prompt vs stale env): if the client records its proof-api
+    # source, SRC_CHAIN must match, else we'd silently write another source's trusted state into this client.
+    expected_src=$(jq -r '.value.proofApiSrcChain // empty' <<<"$entry")
+    if [ -n "$expected_src" ] && [ "$expected_src" != "{{src_chain}}" ]; then
+      echo "REFUSING: client '$client_id' expects proof-api source '$expected_src' but SRC_CHAIN='{{src_chain}}'." >&2
+      echo "That would write '{{src_chain}}' trusted state into the '$client_id' entry. Fix SRC_CHAIN (or .proofApiSrcChain)." >&2
+      exit 1
+    fi
 
     # Discover the gRPC service via reflection unless one was provided (relayer.RelayerService on v0.7.x, proofapi.ProofApiService on v0.8.x)
     service="{{proofapi_service}}"
@@ -484,6 +493,19 @@ _timelock-params contract_name timelock_function nonce:
     to=$(jq -r ".transaction.to" <<< "$tx")
     calldata=$(jq -r ".transaction.input" <<< "$tx")
     timelock_delay=$(jq -r ".settings.timelock_delay" out/scriptHelper.json)
+
+    # Guard against a stale out/scriptHelper.json (it's a gitignored build artifact and may carry another
+    # chain's value, e.g. a testnet 60). The schedule delay MUST equal the live timelock minDelay: too small
+    # reverts at schedule (TimelockInsufficientDelay); too large makes this op Ready AFTER the core ops (which
+    # read getMinDelay() live), so the atomic execute reverts after the full delay. Only relevant when scheduling.
+    if [ "{{ timelock_function }}" == "schedule" ]; then
+        live_delay=$({{cast_binary}} call {{ _timelock_controller }} "{{GET_MIN_DELAY_SIG}}" | awk '{print $1}')
+        if [ "$timelock_delay" != "$live_delay" ]; then
+            echo "REFUSING: out/scriptHelper.json timelock_delay=$timelock_delay != live getMinDelay()=$live_delay." >&2
+            echo "Regenerate scriptHelper.json against this chain before generating schedule blobs." >&2
+            exit 1
+        fi
+    fi
 
     schedule_sig="schedule(address,uint256,bytes,bytes32,bytes32,uint256)"
     execute_sig="execute(address,uint256,bytes,bytes32,bytes32)"
