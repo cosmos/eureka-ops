@@ -60,6 +60,10 @@ export ETH_RPC=<mainnet RPC>        # also exported as FOUNDRY_ETH_RPC_URL by th
       owner; blind signing / EIP-712 enabled on the Ethereum app.
 - [ ] Branch builds: `forge build` green; `deployments/mainnet/1.json` `.accessManagerRoles.*`
       complete (esp. the **full relayer set** — a missing relayer breaks relaying at cutover).
+- [ ] **Signers prepped:** distribute [`SIGNER-CHECKLIST.md`](SIGNER-CHECKLIST.md) + `scripts/signer-verify.sh`
+      (+ its `sha256`) to **both** signer sets over a trusted channel; each signer has run the one-time setup
+      and `cast --version` works (Windows signers on WSL). The per-nonce **expected-hash table** is generated
+      from source and **independently re-checked by a second reviewer**, then published the same way.
 
 ---
 
@@ -197,18 +201,17 @@ ETH_RPC=<rpc> FROM_BLOCK=<accessManager-deploy-block> python3 scripts/validate-v
 
 ---
 
-## Appendix — independent `safeTxHash` verification (every signer)
+## Appendix — independent `safeTxHash` verification
 
-Don't trust the proposer's printout. For a scheduled op at queued nonce `N`:
-```bash
-just schedule-v3-ics20transfer-upgrade-params N     # prints the safeTxHash for nonce N
-```
-For the step-7 MultiSend (DelegateCall):
-```bash
-EXTRA_TIMELOCK_OPS='…' just execute-v3-upgrade-multisend <execute_nonce> cosmoshub-0 ledger-mainnet-1
-```
-Confirm the printed `safeTxHash` matches both the Safe UI and the value shown on the signing device
-before approving. Reject any step-7 proposal whose `to != 0x9641d764…` or `operation != DelegateCall`.
+**Signers** use [`SIGNER-CHECKLIST.md`](SIGNER-CHECKLIST.md) + `scripts/signer-verify.sh` — one command per
+tx (`bash ~/signer-verify.sh 1 <safe> <nonce> --expect <table hash>`) that recomputes the hashes, decodes
+what the tx does, and prints PASS/REJECT. It needs only `cast` (manual mode) — no repo clone / `just` / env.
+
+**Coordinator** generates the expected-hash table from source and has a **second reviewer** regenerate it
+before publishing. The recipes print each `safeTxHash` (`just schedule-…-params <N>`,
+`EXTRA_TIMELOCK_OPS='…' just execute-v3-upgrade-multisend <execute_nonce> cosmoshub-0 ledger-mainnet-1`), or
+run `signer-verify.sh <chain> <safe> <nonce>`. Reject any step-7 proposal whose `to != 0x9641d764…` or
+`operation != DelegateCall`.
 
 ## Abort / failure notes
 
