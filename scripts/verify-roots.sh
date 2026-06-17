@@ -87,7 +87,7 @@ ocount="$(printf '%s\n' "$owners" | grep -c '^0x' || true)"
 [ "$ocount" = "$EXP_OWNERS" ] && ok "owner count = $ocount" || bad "owner count = $ocount (expected $EXP_OWNERS)"
 echo "  owners (eyeball against the signer table):"; printf '%s\n' "$owners" | sed 's/^/      /'
 
-echo "=== B2. Customizer Safe (UN-timelocked authority — step 8 / setCustomERC20) ==="
+echo "=== B2. Customizer Safe (UN-timelocked authority — step 8 / addIBCApp, ID_CUSTOMIZER) ==="
 CUST="$(jq -re '.accessManagerRoles.idCustomizers[0] // empty' "$DEP" 2>/dev/null || true)"
 if [ -z "$CUST" ] || [ "$(lc "$CUST")" = "$ZERO" ]; then
   echo "  INFO  no idCustomizer in $DEP"
@@ -126,7 +126,7 @@ done < <(jq -r '.light_clients[].clientId // empty' "$DEP")
 # Best-effort enumeration: probe the client-N series for an escrow that is NOT one of the JSON clients'
 # (getEscrow returns the zero address for an unregistered client). This closes the "rate-limiter holder on
 # a non-JSON escrow" blind spot for the auto-numbered series; a client with an unrelated name would still
-# need an event scan -- cross-checked against the prod relayer config (only the 2 migrated + dropped client-4).
+# need an event scan -- cross-checked against the prod relayer config (only the 2 migrated; client-4 is in the JSON but dropped).
 stray=0
 for n in $(seq 0 "${CLIENT_PROBE_MAX:-19}"); do
   e="$(call "$ICS20" 'getEscrow(string)(address)' "client-$n")"

@@ -86,17 +86,17 @@ On-chain facts the amber posture relied on, now reproducible via (1): `EXECUTOR(
 | **F1** relayer timing | **Owner-corrected.** No clean halt: relayer stays on the OLD build through the 72 h delay; the Phase-A lockstep gate runs against the accessible **new-build proof-api**; the prod relayer is **upgraded after the execute** (new step **8a**) — a brief restart. | `629ca1c`, `1e5ca10` · `CUTOVER-RUNSHEET.md` 5e/5f/8a; `upgrade-v2-to-v3.md` step 7 | Read 5e/5f/8a — confirm no Phase-A prod cut; the cut is post-execute. |
 | **F2** `check-sp1-verifier` drops `frozen` | Reads both `routes()` returns; **FAILs if `frozen==true`**. | `22ef1f0` · `check-sp1-verifier.sh:94-100` | Read the diff; `verify-roots` prints the live route `(…,false)`. |
 | **F3** rate-limiter false-green | `.accessManagerRoles.rateLimiters` **pre-staged** in `1.json` (membership hard-fail on a miss) + a **conditional per-escrow wiring gate** (`rateLimitedEscrows`) in `validate-v3-roles.py` section D + `discover-v2-roles.py` made **fail-closed**. | `22ef1f0` · `validate-v3-roles.py:162`, `discover-v2-roles.py` tail, `deployments/mainnet/1.json` | `validate-v3-roles testnet` still **32/32** (empty list ⇒ informational); inspect the section-D gate. |
-| **F4** timelock own roles unverified | **`scripts/verify-roots.sh` (new):** asserts `EXECUTOR(addr0)=false`, min delay, PROPOSER/EXECUTOR/CANCELLER=Safe, **no stray `DEFAULT_ADMIN`** (event reconstruction from block `22188631`). | `22ef1f0`, `629ca1c` · `verify-roots.sh` | Run (1) → 13/13. *Note: acute "front-run DoS" was **not** exploitable — executor is not open.* |
+| **F4** timelock own roles unverified | **`scripts/verify-roots.sh` (new):** asserts `EXECUTOR(addr0)=false`, min delay, PROPOSER/EXECUTOR/CANCELLER=Safe, **no stray `DEFAULT_ADMIN`** (event reconstruction from block `22188631`). | `22ef1f0`, `629ca1c` · `verify-roots.sh` | Run (1) → 17/17. *Note: acute "front-run DoS" was **not** exploitable — executor is not open.* |
 | **F5** in-flight packets | **Owner-corrected.** With the short gap (relayer restart, not 72 h) packets are **delayed-not-lost** and catch up post-8a; quiesce is **best-effort**. | `629ca1c` · `CUTOVER-RUNSHEET.md` 5f | Read 5f. |
 
 ### Review B — should-close
 
 | # | Resolution | Commit / file | Re-validate |
 | --- | --- | --- | --- |
-| **F6** delay desync | `deploy.just` `_timelock-params` asserts `out/scriptHelper.json timelock_delay == live getMinDelay()` before building schedule blobs. (Note: the file is gitignored, not a "committed cache".) | `22ef1f0` · `deploy.just:486-` | Read the diff. |
+| **F6** delay desync | `deploy.just` `_timelock-params` asserts `out/scriptHelper.json timelock_delay == live getMinDelay()` before building schedule blobs. (Note: the file is gitignored, not a "committed cache".) | `22ef1f0` · `deploy.just:495-507` | Read the diff. |
 | **F7** ~10 ceremonies / completeness | `signer-verify.sh --expect-subcalls <N>` (REJECT on count≠N); runsheet states the **expected 10** + a per-schedule `--expect` table + "no unrelated Safe txs queued". | `22ef1f0`, `1e5ca10` · `signer-verify.sh`, `CUTOVER-RUNSHEET.md` | `signer-verify … --expect-subcalls 10`. |
 | **F8** exact fold never rehearsed | Rehearsal extended (`RL_GRANTS`) to fold the **4-grant / 10-op** bundle; ran green on a mainnet fork. | `1e5ca10` · `shadow-v2-to-v3-timelock-rehearsal.sh` | Run (5). |
-| **F9** gas unmeasured / `safeTxGas==0` | Bundle gas **measured** in the rehearsal: **≈ 616k / ~60M limit (~1 %)**. `safeTxGas==0` was already asserted on **both** sides (`safe-propose.sh` literal + `signer-verify.sh:128`), so the assert was redundant — effort went to the measurement. | `1e5ca10` · rehearsal `execute_atomic` | Run (5), see "bundle gas used". |
+| **F9** gas unmeasured / `safeTxGas==0` | Bundle gas **measured** in the rehearsal: **≈ 616k / ~60M limit (~1 %)**. `safeTxGas==0` was already asserted on **both** sides (`safe-propose.sh` literal + `signer-verify.sh:135`), so the assert was redundant — effort went to the measurement. | `1e5ca10` · rehearsal `execute_atomic` | Run (5), see "bundle gas used". |
 | **F10** Safe owners/threshold | Asserted by `verify-roots.sh` (`getThreshold()=4`, `getOwners()` count 7, owners printed). | `22ef1f0` · `verify-roots.sh` | Run (1). |
 
 ### Review B — footguns
@@ -136,7 +136,7 @@ procedurally — "decode every payload"); `client-4` left in `1.json` (intention
 
 ## Round 2 — response to the three follow-up reviews
 
-The follow-up reviewers re-ran the validators (reproducing 13/13, 32/32, 616k gas, the attack battery) and
+The follow-up reviewers re-ran the validators (reproducing 17/17, 32/32, 616k gas, the attack battery) and
 found a **real bug**, **doc contradictions**, and additional **coverage gaps C1–C12** that the earlier
 REVIEW-RESPONSE neither fixed nor acknowledged. All verified against source and addressed:
 
@@ -172,12 +172,8 @@ count ≈19; `safeTxGas` assert is at `signer-verify.sh:135`; commit `3a86cc5` +
 
 ---
 
-## What was NOT changed (and why)
-
-No contract changes. The independently-verified mechanical core is untouched: the atomic MultiSend
-encoding + predecessor ordering (proven on a fork), the storage-layout compatibility, the AccessManager
-bootstrap + selector→role table, the Safe EIP-712 signing math, and the `solidity-v3.0.1` pin integrity.
-The work is **operational hardening + asserting trust roots**, exactly as both reviews concluded.
+**No contract changes** — the verified-solid mechanical core (atomic encoding, ordering, storage layout,
+bootstrap, signing math, pin) is untouched; see READINESS-REVIEW §4.
 
 ## Remaining (operational — not for re-review)
 

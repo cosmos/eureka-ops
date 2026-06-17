@@ -45,6 +45,7 @@ Shell context for every command below (the proposer machine):
 ```bash
 export EUREKA_ENVIRONMENT=mainnet EUREKA_CHAIN=1
 export ETH_RPC=<mainnet RPC>        # also exported as FOUNDRY_ETH_RPC_URL by the recipes
+export ETHERSCAN_API_KEY=<key>      # required by discover-v2-roles.py (the fail-closed grant-set gate)
 # proposing/executing Safe txs (steps 6/7): add LEDGER=1 MNEMONIC_INDEX=1 to the command
 ```
 
@@ -144,7 +145,7 @@ is simply refunded once relaying resumes). Therefore:
 
 **Trust-root gate (T-minus, re-run right before scheduling — roots can change):**
 ```bash
-ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1   # timelock deploy block; must be 13/13
+ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1   # must end "ALL TRUST-ROOT CHECKS PASSED"
 ```
 
 ---
@@ -201,7 +202,7 @@ before executing.
    normally; the upgrade happens *after* the execute, step 8a. There is no clean halt, and none is needed.)
 2. Re-run the gates — both must be clean:
    ```bash
-   python3 scripts/discover-v2-roles.py mainnet 1 && echo OK          # now fail-closed; must exit 0
+   python3 scripts/discover-v2-roles.py mainnet 1 && echo OK          # fail-closed; must exit 0
    ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1 # must end "ALL TRUST-ROOT CHECKS PASSED"
    ```
 3. **No migrated client is frozen (C5).** A freeze applied during the window (misbehaviour) would be
@@ -235,6 +236,10 @@ EXTRA_TIMELOCK_OPS='…' LEDGER=1 MNEMONIC_INDEX=1 \
 ---
 
 ## Phase D — Post-cutover
+
+> **Order:** execute → **9** (escrow init) → **8a** (relayer upgrade) → **11** (verify) → **13** (validate).
+> Step **8** (register ICS27GMP) is independent — any time after the execute. *(8a is numbered for the
+> relayer "cut"; it runs after 9 so transfers fully resume.)*
 
 **8a. Upgrade the prod relayer to the new build — right after the execute lands** (and after step 9 escrow-init,
 which is permissionless + quick, so transfers fully resume). This is the "cut": bump `v1.2.0`→`v2.0.0` (latest

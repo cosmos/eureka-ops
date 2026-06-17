@@ -85,6 +85,10 @@ stance — including toward the reviewers' own claims). Verification results are
 
 ## 3. Conclusion
 
+> **Superseded — §5.1 is now closed** (see the §6 status note and §8). For the **current** go/no-go verdict
+> use [`FINAL-READINESS-REPORT.md`](FINAL-READINESS-REPORT.md), which owns it. The text below was the
+> conclusion *at the time of this review*, kept for the audit trail.
+
 **Not ready to schedule or execute until the §5.1 "must-resolve" items are closed. This is not a
 "go."** The upgrade is mechanically sound and well-instrumented — the core is *verified, not asserted*
 — and it is close-able after the planned fixes; but several of those fixes are **blockers, not notes**.
@@ -169,7 +173,7 @@ Severity labels are the reviewers'. Each finding states what I confirmed.
 ### 5.2 Should close before the window
 
 - **F6 — Two timelock-delay sources can desync. `MEDIUM` (new).** *Verified in code:* the rate-limiter
-  grant path (`deploy.just:486-493`) reads `timelock_delay` from the generated `out/scriptHelper.json`,
+  grant path (`deploy.just:495-507`) reads `timelock_delay` from the generated `out/scriptHelper.json`,
   while the core path (`upgrade.just`) reads `getMinDelay()` **live**. A stale file (the local copy is a
   testnet `60`) makes the grant `schedule` revert `TimelockInsufficientDelay`, or — if larger — makes
   the grant `Ready` later than the core ops so the atomic execute reverts after the full 72 h.
@@ -252,7 +256,7 @@ Mechanical, low-risk, **no contract changes** — only ops tooling, validators, 
 runbooks. Each item links to the finding(s) it closes.
 
 > **Implementation status (2026-06-17):** §6.1–§6.3 **implemented and tested** — `verify-roots.sh` now
-> **13/13** against mainnet (incl. the stray-`DEFAULT_ADMIN` event scan from block `22188631` and a
+> **17/17** against mainnet (incl. the stray-`DEFAULT_ADMIN` event scan from block `22188631` and a
 > client-`0..19` escrow probe — **no stray admin, no stray escrow**), `validate-v3-roles` still 32/32 on
 > testnet. §6.4 **drafted into `CUTOVER-RUNSHEET.md`** and corrected to the real operational model
 > (confirmed with the owners): there is **no clean relaying halt** — the prod relayer stays on the *old*

@@ -89,7 +89,8 @@ RL_GRANTS="cosmoshub-0:$H1,cosmoshub-0:$H2,ledger-mainnet-1:$H1,ledger-mainnet-1
 
 `verify-roots` (17/17) asserts on-chain **today**: executor **not** open, min delay 259 200, no stray
 DEFAULT_ADMIN/CANCELLER/PROPOSER, governance Safe **4-of-7**, customizer Safe **2-of-5**, gateway route **not
-frozen**, exactly the 3 known escrows. `validate-v3-roles` includes a hard rate-limiter wiring gate. The
+frozen**, and no stray escrow in the `client-0..19` probe (best-effort; the 3 JSON clients + the prod relayer
+config bound the set). `validate-v3-roles` includes a hard rate-limiter wiring gate. The
 signer tool rejects every malicious-calldata shape (ADMIN grant, non-execute sub-call, wrong delegatecall
 target, sub-call count mismatch).
 
@@ -131,4 +132,4 @@ is a 2-of-5 Safe (step 8 = a Safe CALL, not a broadcast) · proposer = a single 
 - Procedure: [`../../upgrade-v2-to-v3.md`](../../upgrade-v2-to-v3.md). Scripts: `scripts/verify-roots.sh`,
   `validate-v3-roles.py`, `discover-v2-roles.py`, `signer-verify.sh`, `safe-propose.sh`.
 
-*This effort: 12 commits / 19 files / 0 contract changes since the review baseline (`188912e..HEAD`).*
+*This effort: 13 commits / 20 files / 0 contract changes since the review baseline (`188912e..HEAD`).*

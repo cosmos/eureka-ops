@@ -214,7 +214,7 @@ clients.**
 #### Trust-root verification (on-chain, 2026-06-17 — reproduce with `ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1`)
 
 These roots are trusted by the whole upgrade and were never asserted by tooling until now; `verify-roots.sh`
-checked them (read-only) and returned **13/13**. **Timelock deploy block = `22188631`** (creation tx
+checked them (read-only) and returned **17/17**. **Timelock deploy block = `22188631`** (creation tx
 `0x95d263cfe749d98ba9baa5866641de36797033906b5440b087d1d42ceab03c23`) — used as `FROM_BLOCK` for the
 `DEFAULT_ADMIN` event reconstruction (result: **no stray admin; only the timelock holds it**). The
 client-N escrow probe (`client-0..19`) found **no escrow beyond the 3 known** — so the
@@ -267,7 +267,7 @@ role model is richer; reconciled via `discover-v2-roles.py` (2026-06-16, pre-upg
 | v2 role(s) | live holders | v3 disposition |
 | --- | --- | --- |
 | RELAYER, PAUSER, UNPAUSER, DELEGATE_SENDER, PORT+CLIENT_ID_CUSTOMIZER, ERC20_CUSTOMIZER | **match the JSON exactly** | auto-granted by the bootstrap from the JSON — no action |
-| **RATE_LIMITER** | `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` (escrow `0x0fA75C2c…`) and `ledger-mainnet-1` (escrow `0xC76944B0…`) escrows; **none** on `client-4` (escrow `0x3f36Fd49…`) | **not in the JSON → re-grant** (procedure step 10 / fold into the step-7 atomic execute). **Not a no-op on mainnet** (it was on testnet). Confirmed on-chain via `hasRole` (`RATE_LIMITER_ROLE = keccak256("RATE_LIMITER_ROLE")`). |
+| **RATE_LIMITER** | `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` (escrow `0x0fA75C2c…`) and `ledger-mainnet-1` (escrow `0xC76944B0…`) escrows; **none** on `client-4` (escrow `0x3f36Fd49…`) | **not auto-granted by the bootstrap** (rate-limiter is not a bootstrap struct field) → **re-grant** (step 10 / fold into the step-7 execute). Pre-staged **top-level** in `1.json` (`rateLimiters`/`rateLimitedEscrows`) for the *validator* only — kept out of `.accessManagerRoles`, which the deploy rewrites. **Not a no-op on mainnet** (it was on testnet); confirmed via `hasRole`. |
 | TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 role** — it managed who may relabel IBCERC20 metadata (`grant/revokeMetadataCustomizerRole` → `setMetadata`). v3 removes mutable IBCERC20 metadata entirely; the replacement is `setCustomERC20` under **`ERC20_CUSTOMIZER`** (migrated), so `0x4b46ea82…` keeps the comparable power. Only the *in-place relabel of an auto-token* is gone. |
 | LIGHT_CLIENT_MIGRATOR (per-client) | deployer + timelock | **no v3 role** (`migrateClient` is ADMIN-gated) — dropped; governance-held only |
 | DEFAULT_ADMIN (ICS26 + ICS20) | timelock `0xb3999B2D…` | becomes v3 `ADMIN` (the timelock) |

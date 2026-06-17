@@ -1,7 +1,8 @@
 # Safe signer checklist — v3 upgrade
 
-You sign in the **Safe web UI**. Your whole job per transaction: **run one command, check the hash matches
-in 3 places, sign.** ~2 min each. You'll do this twice — a batch of "schedule" txs now, one "execute" ~3 days later.
+You sign in the **Safe web UI**: **run one command, confirm the hash matches in three places, sign.** ~2 min each.
+- **Governance-Safe signers:** ~10 "schedule" txs now (one signature each), then **one** "execute" ~3 days later.
+- **Customizer-Safe signers:** **one** tx — the step-8 `addIBCApp`.
 
 > **If the command prints anything but `PASS`, or a hash doesn't match → DO NOT SIGN.**
 > Screenshot it and message **‹coordinator + channel›** so all signers hold.
@@ -9,20 +10,20 @@ in 3 places, sign.** ~2 min each. You'll do this twice — a batch of "schedule"
 ## Each transaction
 
 1. In the Safe UI, open the pending tx; note its **nonce** (network must be **Ethereum**).
-2. Run this — paste the **nonce** and that row's **expected hash** from the table below:
+2. Run (paste the **nonce** and that row's **expected hash** from the table). For the **step-7 execute** also add `--expect-subcalls 10`:
    ```bash
    bash ~/signer-verify.sh 1 ‹SAFE_ADDRESS› ‹NONCE› --expect ‹EXPECTED_SAFETXHASH›
    ```
-   Governance Safe `0x7B96CD54aA750EF83ca90eA487e0bA321707559a` · Customizer Safe (step 8) `0x4b46ea82D80825CA5640301f47C035942e6D9A46`
-3. **`REJECT` or any warning → stop, report.  `PASS` → continue.**
-4. Confirm the **safeTxHash** the script printed is identical in **both** places:
-   - the Safe UI → **Advanced details**, and
-   - your **hardware wallet** screen when you start signing (a Ledger shows **DomainHash + MessageHash** — match
-     both; the script prints those too). Compare the **whole** value.
-5. All three match → **sign in the Safe UI.**  Any mismatch → **reject on the device** and report.
+   Governance Safe `0x7B96CD54aA750EF83ca90eA487e0bA321707559a` (every tx except step 8) · Customizer Safe `0x4b46ea82D80825CA5640301f47C035942e6D9A46` (step 8 only)
+3. **`REJECT` or any warning → STOP, report.  `PASS` → continue.**
+4. Confirm the hash matches in **three** places — the script is the source of truth:
+   1. the script's printed **`safeTxHash`**;
+   2. the Safe UI → **Advanced details** safeTxHash; and
+   3. your **hardware wallet** when you sign — a Ledger shows **DomainHash + MessageHash** (not a single hash), so
+      match **both** to the script's `domainHash:` / `messageHash:` lines. Compare whole values, not just the ends.
+5. All three agree → **sign in the Safe UI.**  Any mismatch → **reject on the device** and report.
 
-That's the whole job. The script independently recomputes the hash and decodes what the tx does, so a tampered
-UI shows up as "UI hash ≠ script hash." **Trust a `REJECT`.**
+The script independently recomputes the hash, so a tampered UI shows as a mismatch. **Trust a `REJECT`.**
 
 ## One-time setup
 
@@ -45,8 +46,11 @@ UI shows up as "UI hash ≠ script hash." **Trust a `REJECT`.**
 | ‹N+3›| gov | `0xb3999B2D…` timelock | CALL | schedule IBCERC20 upgrade | `0x…` |
 | ‹N+4›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate cosmoshub-0 | `0x…` |
 | ‹N+5›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate ledger-mainnet-1 | `0x…` |
-| ‹N+6…9›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter (one row per holder×escrow) | `0x…` |
-| ‹X›  | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7)** | `0x…` |
+| ‹N+6›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x4b46ea82…` | `0x…` |
+| ‹N+7›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x64259f72…` | `0x…` |
+| ‹N+8›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x4b46ea82…` | `0x…` |
+| ‹N+9›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x64259f72…` | `0x…` |
+| ‹X›  | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7), `--expect-subcalls 10`** | `0x…` |
 | ‹Y›  | cust | `0x3aF13430…` ICS26Router | CALL | addIBCApp gmpport (step 8) | `0x…` |
 
 The **step-7 execute is the only DelegateCall** (and only to `0x9641d764…`); every other tx is a **CALL**.
