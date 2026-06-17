@@ -302,8 +302,17 @@ A second schedule→delay→execute window is impractical on mainnet (72 h each)
 `EXTRA_TIMELOCK_OPS` path lets the rate-limiter re-grant (step 10) and any role grants (step 12) be
 **scheduled in the step-6 window** and folded into the **same atomic step-7 MultiSend**. Each
 folded `execute(...)` blob must byte-match its scheduled op (identical prompt inputs) and that
-schedule must already have executed, or the whole atomic bundle reverts. Rehearsed on-fork via
-`REHEARSE_RATE_LIMITER_GRANT=1` (green).
+schedule must already have executed, or the whole atomic bundle reverts.
+
+**Rehearsed on a mainnet fork (2026-06-17) — the EXACT 10-op fold:** 4 core + 2 migrations
+(`cosmoshub-0`, `ledger-mainnet-1`) + **4 rate-limiter grants** (`0x4b46ea82…` and `0x64259f72…` on
+each of the two escrows), driven via
+`RL_GRANTS="cosmoshub-0:0x4b46ea82…,cosmoshub-0:0x64259f72…,ledger-mainnet-1:0x4b46ea82…,ledger-mainnet-1:0x64259f72…"`.
+All 4 grants scheduled, folded via `EXTRA_TIMELOCK_OPS`, the bundle's `safeTxHash` matched the Safe's
+on-chain `getTransactionHash`, and the atomic `execTransaction` executed (`status 0x1`) for
+**≈ 616,104 gas** (block limit ≈ 60M, so ~1 %). Post-execute: all 4 escrow `setTargetFunctionRole` +
+holder `grantRole` landed. (The earlier single-grant `REHEARSE_RATE_LIMITER_GRANT=1` rehearsal is the
+1-op fallback form.)
 
 ---
 

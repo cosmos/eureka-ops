@@ -251,11 +251,14 @@ Severity labels are the reviewers'. Each finding states what I confirmed.
 Mechanical, low-risk, **no contract changes** — only ops tooling, validators, deployment JSON, and
 runbooks. Each item links to the finding(s) it closes.
 
-> **Implementation status (2026-06-17):** §6.1 (all code fixes), §6.2 (`scripts/verify-roots.sh` — **11/11
-> against mainnet**), and §6.3 (JSON pre-staging + the `validate-v3-roles.py` conditional wiring gate) are
-> **implemented and tested**. §6.4 (runbook sequencing — relayer timing F1, packet quiesce F5, cancel flow)
-> and §6.5 (the 10-op fork rehearsal + gas measurement) remain — F1/F5 need the §8 open-decision inputs.
-> The escrow full-enumeration (§6.2) is stubbed with the event-based caveat, pending the client-id scheme.
+> **Implementation status (2026-06-17):** §6.1–§6.3 **implemented and tested** (incl. `verify-roots.sh`
+> 11/11 against mainnet, `validate-v3-roles` still 32/32 on testnet). §6.4 **drafted into
+> `CUTOVER-RUNSHEET.md`** — relayer cut deferred to Phase C with a Phase-A *canary* gate (F1), a
+> packet-quiesce step (F5), an explicit escrow-init submission (FA4), and a cancel/abort decision tree —
+> with the canary endpoint, the relaying-halt owner, and the timelock from-block left as `‹…›` for the §8
+> owners. §6.5 **done**: the exact **10-op fold** rehearsed on a mainnet fork (≈ **616k gas**, ~1 % of the
+> block limit; all 4 grants land). Remaining: the §8 open-decision inputs and the escrow full-enumeration
+> (event-based, §6.2).
 
 ### 6.1 Code fixes (one-liners / small)
 

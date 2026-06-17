@@ -50,10 +50,11 @@ export ETH_RPC=<mainnet RPC>        # also exported as FOUNDRY_ETH_RPC_URL by th
 
 ## T-minus (before opening the window)
 
-- [ ] **Shadow-fork dress rehearsal green**, incl. the rate-limiter fold:
-      `REHEARSE_RATE_LIMITER_GRANT=1 just shadow-v2-to-v3-mainnet-timelock` (and the staged-v6.1
-      variant — preserve a `shadow-mainnet` JSON carrying the v6.1 vkeys + gateway and run with
-      `SHADOW_FORK_PRESERVE_DEPLOYMENT=1`).
+- [ ] **Shadow-fork dress rehearsal green**, incl. the **exact 10-op fold** (4 core + 2 migrations + 4
+      rate-limiter grants) via `RL_GRANTS="cosmoshub-0:0x4b46ea82…,cosmoshub-0:0x64259f72…,ledger-mainnet-1:0x4b46ea82…,ledger-mainnet-1:0x64259f72…"
+      SP1_CLIENT_IDS=cosmoshub-0,ledger-mainnet-1 bash scripts/shadow-v2-to-v3-timelock-rehearsal.sh 1 mainnet shadow-mainnet <fork>`,
+      plus the staged-v6.1 variant (`SHADOW_FORK_PRESERVE_DEPLOYMENT=1`). *(Rehearsed 2026-06-17: the
+      10-op bundle executes for ≈ 616k gas (~1 % of the block limit); all 4 grants land.)*
 - [ ] **SP1 go/no-go** on the `sp1-programs` tag (final `v2.0.0` at the `rc.2` commit).
 - [ ] **Relayer owners + the 2-of-5 customizer Safe signers + the 4-of-7 governance signers** lined up.
 - [ ] **Ledger** confirmed: `cast wallet address --ledger --mnemonic-index 1` == a governance-Safe
@@ -96,10 +97,31 @@ CLIENT_ID=cosmoshub-0      SP1_DEPLOY_COPY=true just deploy-light-client
 CLIENT_ID=ledger-mainnet-1 SP1_DEPLOY_COPY=true just deploy-light-client
 ```
 
-**5e. Relayer lockstep gate** — cut the prod relayer to the same `v2.0.0` build (bump
-`v1.2.0`→`v2.0.0` in `ibc-manifests/relayer-api/config/prod/relayer.json`), then:
+**5e. Relayer lockstep gate — against a CANARY, NOT prod.** ⚠️ **Do not cut the prod relayer here.**
+Cutting prod to `v2.0.0` (vkey `0x00d38536…`) while the on-chain clients still hold `0x009443d9…` makes
+every `updateClient`/`recvPacket`/`ackPacket` revert `VerificationKeyMismatch` for the **entire 72 h
+window** — a multi-day outage of both channels. The prod cut happens in **Phase C under halt** (step 7e).
+Here, only prove the *build* serves the right vkeys: point the gate at a **‹canary / non-live proof-api
+running the v2.0.0 build›**, scoped to the migrated clients (an *unscoped* run FAILs on the still-pre-v6.1
+`client-4`, and per-client `SRC_CHAIN` differs):
 ```bash
-PROOF_API_ADDR=localhost:<port> SRC_CHAIN=cosmoshub-4 DST_CHAIN=1 just check-relayer-vkeys   # one call validates all
+PROOF_API_ADDR=‹canary:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
+PROOF_API_ADDR=‹canary:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
+```
+
+**5f. Quiesce relaying & packet state (plan the gap).** Owner: ‹…›. The relaying gap begins at the
+Phase-C cut and ends at resume (step 11). Before opening the window:
+- **Drain both channels** (`cosmoshub-0`, `ledger-mainnet-1`) to a clean state — relay all in-flight
+  packets to recv **and** ack, so nothing is left un-acked when relaying stops. Un-acked packets stall
+  (recv/ack/timeout all revert on the vkey mismatch) and their **escrowed funds stay locked** until catch-up.
+- **Confirm no packet's timeout falls inside the window.** A timeout that elapses during the gap cannot
+  be processed until after cutover.
+- **Record the post-cutover catch-up / timeout / refund procedure.** Storage survives the beacon upgrade
+  so nothing is lost — this is about not stranding users mid-window.
+
+**Trust-root gate (T-minus, re-run right before scheduling — roots can change):**
+```bash
+ETH_RPC=<rpc> FROM_BLOCK=‹timelock deploy block› scripts/verify-roots.sh mainnet 1   # must be 11/11
 ```
 
 ---
@@ -145,26 +167,36 @@ each `safeTxHash` (see appendix) before approving.
 
 ## Phase C — Wait the 72 h delay, then atomic execute (step 7)
 
-**Just before executing:** confirm the delay elapsed; **halt packet relaying** (assigned owner);
-re-run `discover-v2-roles.py mainnet 1` to confirm the grant set didn't change. Confirm each folded
-op is ready:
-```bash
-cast call <timelock> 'isOperationReady(bytes32)(bool)' <opId>   # per folded grant
-```
+**Just before executing — in order:**
+1. Confirm the **72 h delay elapsed**.
+2. **Halt off-chain relaying** for both channels (owner ‹…›). This starts the gap (kept short: steps 7→11).
+3. **Cut the prod relayer to `v2.0.0` now** (bump `v1.2.0`→`v2.0.0` in
+   `ibc-manifests/relayer-api/config/prod/relayer.json`) and re-run the lockstep gate **against prod**:
+   ```bash
+   PROOF_API_ADDR=‹prod:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
+   PROOF_API_ADDR=‹prod:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
+   ```
+4. Re-run the discovery gate (now **fail-closed** — must exit **0**) and the trust-root gate:
+   ```bash
+   python3 scripts/discover-v2-roles.py mainnet 1 && echo OK
+   ETH_RPC=<rpc> FROM_BLOCK=‹timelock deploy block› scripts/verify-roots.sh mainnet 1   # 11/11
+   ```
 
-**Build + propose the atomic MultiSend** — the 6 core/migration executes + the rate-limiter grant
-executes folded via `EXTRA_TIMELOCK_OPS` (`;`-separated raw blobs captured above). The packer also
-auto-verifies every sub-op is a pending timelock op before building:
+**Build + propose the atomic MultiSend** — the 6 core/migration executes + the **4** rate-limiter grant
+executes folded via `EXTRA_TIMELOCK_OPS`. Set `REQUIRE_READY=1` so the packer asserts every sub-op is not
+just *pending* but *ready* (delay elapsed) before building:
 ```bash
-EXTRA_TIMELOCK_OPS='0x<rl-grant-exec-1>;0x<rl-grant-exec-2>;0x<rl-grant-exec-3>;0x<rl-grant-exec-4>' \
+EXTRA_TIMELOCK_OPS='0x<rl-1>;0x<rl-2>;0x<rl-3>;0x<rl-4>' REQUIRE_READY=1 \
   just execute-v3-upgrade-multisend <execute_nonce> cosmoshub-0 ledger-mainnet-1
 # prints to/value/operation(=1)/data/safeTxHash — verify, then propose as DelegateCall at the SAME nonce:
 EXTRA_TIMELOCK_OPS='…' LEDGER=1 MNEMONIC_INDEX=1 \
   just safe-propose 0x9641d764fc13c8B624c04430C7356C1C7C8102e2 <multisend_data> <execute_nonce> 1
 ```
 4-of-7 sign + execute in the Safe UI / device. **Verify on-device: `to == 0x9641d764…`,
-`operation == DelegateCall`, `safeTxHash` == the recipe's recomputed value.** Atomic + ordered
-(ICS20 before ICS26) — if any sub-execute reverts, nothing lands.
+`operation == DelegateCall`, `safeTxHash` == the recipe's recomputed value.** Signers should also run
+`signer-verify.sh … --expect-subcalls 10` (4 core + 2 migrations + 4 rate-limiter). Atomic + ordered
+(ICS20 before ICS26) — if any sub-execute reverts, nothing lands. *(Rehearsed on a mainnet fork: the exact
+10-op bundle executes for ≈ 616k gas, ~1 % of the block limit.)*
 
 → record the `execTransaction` tx hash in `RECORD.md`.
 
@@ -179,9 +211,15 @@ cast calldata 'addIBCApp(string,address)' "gmpport" <ics27Gmp.proxy>
 # Safe tx: to=ICS26Router 0x3aF134307D5Ee90faa2ba9Cdba14ba66414CF1A7, value=0, operation=0 (CALL); 2-of-5 sign.
 ```
 
-**9. Initialize every escrow** (permissionless, once each) — **all three**, incl. `client-4`'s:
+**9. Initialize every escrow** (permissionless, once each) — **all three**, incl. `client-4`'s. The
+`-params` recipe only **prints** `to`/`data`; you must then **submit** each as a normal tx (any funded
+EOA — no Safe/timelock):
 ```bash
-just initialize-known-escrows-v2-params      # cosmoshub-0, ledger-mainnet-1, client-4
+just initialize-known-escrows-v2-params      # PRINTS to/data for cosmoshub-0, ledger-mainnet-1, client-4
+# for each printed pair, broadcast it:
+cast send <escrow_to> <data> --rpc-url <rpc> --private-key <funded EOA>   # or --ledger
+# then confirm each escrow flipped:
+cast call <escrow> 'authority()(address)' --rpc-url <rpc>                 # == <accessManager>
 ```
 
 **11. Verify**, then **resume relaying** only after both pass:
@@ -213,12 +251,28 @@ before publishing. The recipes print each `safeTxHash` (`just schedule-…-param
 run `signer-verify.sh <chain> <safe> <nonce>`. Reject any step-7 proposal whose `to != 0x9641d764…` or
 `operation != DelegateCall`.
 
+## Abort / cancel decision tree
+
+The Safe holds `CANCELLER_ROLE`, so a scheduled op can be cancelled during the delay. Decide the path
+*before* the window so it isn't improvised:
+
+- **Found a problem during the 72 h delay (nothing executed yet):** the v2 system is still fully live and
+  un-halted. **Cancel** the affected scheduled op(s) and re-schedule (another 72 h):
+  ```bash
+  cast call <timelock> 'hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)' … # the opId
+  # propose a Safe CALL to the timelock: cancel(bytes32 id), 4-of-7 sign
+  cast calldata 'cancel(bytes32)' <opId>
+  ```
+- **Step-7 atomic execute reverts** (after halt): nothing landed (atomic). Diagnose, re-build, re-propose
+  *without* re-scheduling — the ops are still pending. Usual cause: a folded grant blob that doesn't
+  byte-match its scheduled op, or a schedule that never executed (the packer's pending/ready guard catches
+  most at build time). If it can't be fixed in-window: **resume v2 relaying and stand down** (the upgrade
+  simply hasn't happened), then regroup.
+- **Cannot proceed after the delay elapses:** choose explicitly — (a) resume v2 relaying and stand down,
+  or (b) cancel + reschedule a fresh 72 h round. Either way, **un-halt relaying** so the gap doesn't extend.
+
 ## Abort / failure notes
 
-- A sub-execute reverting in step 7 reverts the **whole** bundle — nothing lands; diagnose, re-build,
-  re-propose. A folded grant whose execute blob doesn't byte-match its scheduled op (or whose
-  schedule didn't execute) is the usual cause; the packer's `isOperationPending` guard catches most
-  of these at build time.
 - A migration left unscheduled / mistyped → the packer aborts the build (won't silently shorten the
   MultiSend). Confirm both client ids are in the args and scheduled.
 - `verify-deployment` is expected to fail between `deploy-light-client` and the step-7 migration

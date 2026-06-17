@@ -67,6 +67,10 @@ sp1_client_ids="${SP1_CLIENT_IDS:-}"
 rehearse_rl_grant="${REHEARSE_RATE_LIMITER_GRANT:-0}"
 rl_grant_addr="${RL_GRANT_ADDRESS:-0x000000000000000000000000000000000000dEaD}"
 rl_grant_cid_override="${RL_GRANT_CLIENT_ID:-}"
+# RL_GRANTS="cid:holder,cid:holder,..." rehearses the EXACT mainnet fold (4 grants -> a 10-sub-call bundle).
+# Unset = the single representative grant (back-compat). Setting RL_GRANTS implies REHEARSE_RATE_LIMITER_GRANT.
+rl_grants_spec="${RL_GRANTS:-}"
+[ -n "$rl_grants_spec" ] && rehearse_rl_grant=1
 
 if [ ! -f "$source_file" ]; then
   echo "source deployment does not exist: $source_file" >&2
@@ -254,75 +258,81 @@ build_client_id_args() {
 # run -- too fragile to feed over a pipe -- and because the production fold itself takes this grant as a raw 0x
 # execute blob captured out-of-band anyway (see safe.just execute-timelock-multisend). schedule and execute share
 # the same target/value/data/predecessor/salt, so they map to the same TimelockController operation id.
+# Parallel arrays over the grant set, plus rl_extra_ops (the ;-joined execute blobs for EXTRA_TIMELOCK_OPS).
+rl_schedules=(); rl_executes=(); rl_escrows=(); rl_holders=(); rl_extra_ops=""
+
+# Build one grant's schedule+execute timelock calldata for (cid, holder); echoes "schedule|execute|escrow".
+# Byte-identical to GrantRateLimiterRole.sol: multicall([setTargetFunctionRole(escrow,[setRateLimit],ROLE),
+# grantRole(ROLE, holder, 0)]) wrapped in schedule/execute (predecessor=0, salt=0, delay=getMinDelay()).
+_build_rl_grant() {
+  local cid="$1" holder="$2" escrow stfr grant am_data delay sched exe
+  escrow="$(cast call "$ics20_proxy" "getEscrow(string)(address)" "$cid" --rpc-url "$fork_rpc")"
+  [ "$escrow" != "$zero_addr" ] || { echo "client '$cid' has no escrow on the fork" >&2; exit 1; }
+  stfr="$(cast calldata "setTargetFunctionRole(address,bytes4[],uint64)" "$escrow" "[$rate_limit_set_sel]" "$rate_limiter_role")"
+  grant="$(cast calldata "grantRole(uint64,address,uint32)" "$rate_limiter_role" "$holder" 0)"
+  am_data="$(cast calldata "multicall(bytes[])" "[$stfr,$grant]")"
+  delay="$(cast call "$timelock" "getMinDelay()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
+  sched="$(cast calldata "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$access_manager" 0 "$am_data" "$zero_bytes32" "$zero_bytes32" "$delay")"
+  exe="$(cast calldata "execute(address,uint256,bytes,bytes32,bytes32)" "$access_manager" 0 "$am_data" "$zero_bytes32" "$zero_bytes32")"
+  printf '%s|%s|%s\n' "$sched" "$exe" "$escrow"
+}
+
 prepare_rate_limiter_grant() {
   access_manager="$(jq -re '.accessManager' "$shadow_file")"
   if [ -z "$access_manager" ] || [ "$access_manager" = "$zero_addr" ]; then
-    echo "REHEARSE_RATE_LIMITER_GRANT=1 but .accessManager is missing/zero in $shadow_file" >&2
-    exit 1
+    echo "rate-limiter fold requested but .accessManager is missing/zero in $shadow_file" >&2; exit 1
   fi
-
-  # Pick a client whose escrow resolves non-zero on the v2 fork (GrantRateLimiterRole.sol asserts escrow != 0).
-  rl_grant_cid=""
-  if [ -n "$rl_grant_cid_override" ]; then
-    rl_escrow="$(cast call "$ics20_proxy" "getEscrow(string)(address)" "$rl_grant_cid_override" --rpc-url "$fork_rpc")"
-    if [ "$rl_escrow" = "$zero_addr" ]; then
-      echo "RL_GRANT_CLIENT_ID=$rl_grant_cid_override has no escrow on the fork; pick a client with a non-zero escrow" >&2
-      exit 1
+  # Grant set: RL_GRANTS="cid:holder,..." (the real mainnet fold) else a single representative grant.
+  local pairs="$rl_grants_spec"
+  if [ -z "$pairs" ]; then
+    local cid="$rl_grant_cid_override"
+    if [ -z "$cid" ]; then
+      local _cid e
+      while IFS= read -r _cid; do [ -n "$_cid" ] || continue
+        e="$(cast call "$ics20_proxy" "getEscrow(string)(address)" "$_cid" --rpc-url "$fork_rpc")"
+        [ "$e" != "$zero_addr" ] && { cid="$_cid"; break; }
+      done < <(sp1_ids)
     fi
-    rl_grant_cid="$rl_grant_cid_override"
-  else
-    while IFS= read -r _cid; do
-      [ -n "$_cid" ] || continue
-      rl_escrow="$(cast call "$ics20_proxy" "getEscrow(string)(address)" "$_cid" --rpc-url "$fork_rpc")"
-      if [ "$rl_escrow" != "$zero_addr" ]; then
-        rl_grant_cid="$_cid"
-        break
-      fi
-    done < <(sp1_ids)
-    if [ -z "$rl_grant_cid" ]; then
-      echo "no SP1 client has a non-zero escrow on the fork; cannot rehearse the rate-limiter grant fold" >&2
-      exit 1
-    fi
+    [ -n "$cid" ] || { echo "no SP1 client has a non-zero escrow on the fork" >&2; exit 1; }
+    pairs="$cid:$rl_grant_addr"
   fi
-
-  # Inner AccessManager.multicall -- byte-identical to GrantRateLimiterRole.sol's `calls`.
-  local stfr grant am_data delay
-  stfr="$(cast calldata "setTargetFunctionRole(address,bytes4[],uint64)" "$rl_escrow" "[$rate_limit_set_sel]" "$rate_limiter_role")"
-  grant="$(cast calldata "grantRole(uint64,address,uint32)" "$rate_limiter_role" "$rl_grant_addr" 0)"
-  am_data="$(cast calldata "multicall(bytes[])" "[$stfr,$grant]")"
-
-  # Timelock wrappers -- same predecessor=0 / salt=0 / delay=getMinDelay() that _timelock-params emits.
-  delay="$(cast call "$timelock" "getMinDelay()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
-  rl_schedule="$(cast calldata "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" "$access_manager" 0 "$am_data" "$zero_bytes32" "$zero_bytes32" "$delay")"
-  rl_execute="$(cast calldata "execute(address,uint256,bytes,bytes32,bytes32)" "$access_manager" 0 "$am_data" "$zero_bytes32" "$zero_bytes32")"
-  echo "    rate-limiter grant fold: client '$rl_grant_cid' escrow $rl_escrow, grantee $rl_grant_addr"
+  local pair cid holder built sched exe escrow
+  local oldifs="$IFS"; IFS=','
+  for pair in $pairs; do
+    IFS="$oldifs"
+    [ -n "$pair" ] || continue
+    cid="${pair%%:*}"; holder="${pair#*:}"
+    built="$(_build_rl_grant "$cid" "$holder")"
+    sched="${built%%|*}"; built="${built#*|}"; exe="${built%%|*}"; escrow="${built##*|}"
+    rl_schedules+=("$sched"); rl_executes+=("$exe"); rl_escrows+=("$escrow"); rl_holders+=("$holder")
+    [ -n "$rl_extra_ops" ] && rl_extra_ops="$rl_extra_ops;"
+    rl_extra_ops="$rl_extra_ops$exe"
+    echo "    rate-limiter grant: client '$cid' escrow $escrow grantee $holder"
+    IFS=','
+  done
+  IFS="$oldifs"
+  echo "    (${#rl_executes[@]} rate-limiter grant(s) to fold -> $(( 6 + ${#rl_executes[@]} )) total sub-calls with 4 core + 2 migrations)"
 }
 
-# Assert the folded grant is NOT yet in effect (so the post-execute assertion can't trivially pass).
+# Assert NONE of the folded grants' holders are members yet (so the post-execute assertion proves the work).
 assert_rate_limiter_grant_absent() {
-  local member
-  member="$(cast call "$access_manager" "hasRole(uint64,address)(bool,uint32)" "$rate_limiter_role" "$rl_grant_addr" --rpc-url "$fork_rpc" | head -n1 | awk '{print $1}')"
-  if [ "$member" = "true" ]; then
-    echo "FAIL: grantee $rl_grant_addr already holds RATE_LIMITER_ROLE before execute; the fold assertion would be meaningless" >&2
-    exit 1
-  fi
+  local i member
+  for i in $(seq 0 $(( ${#rl_holders[@]} - 1 )) ); do
+    member="$(cast call "$access_manager" "hasRole(uint64,address)(bool,uint32)" "$rate_limiter_role" "${rl_holders[$i]}" --rpc-url "$fork_rpc" | head -n1 | awk '{print $1}')"
+    [ "$member" != "true" ] || { echo "FAIL: ${rl_holders[$i]} already holds RATE_LIMITER_ROLE before execute" >&2; exit 1; }
+  done
 }
 
-# Assert the folded grant landed via the atomic MultiSend: escrow.setRateLimit is now gated by RATE_LIMITER_ROLE
-# (setTargetFunctionRole) and the grantee holds the role (grantRole). Fail loudly otherwise.
+# Assert EVERY folded grant landed: each escrow's setRateLimit is wired to RATE_LIMITER and each holder holds it.
 assert_rate_limiter_grant_landed() {
-  local got_role member
-  got_role="$(cast call "$access_manager" "getTargetFunctionRole(address,bytes4)(uint64)" "$rl_escrow" "$rate_limit_set_sel" --rpc-url "$fork_rpc" | awk '{print $1}')"
-  if [ "$got_role" != "$rate_limiter_role" ]; then
-    echo "FAIL: getTargetFunctionRole(escrow $rl_escrow, setRateLimit) = $got_role, expected $rate_limiter_role" >&2
-    exit 1
-  fi
-  member="$(cast call "$access_manager" "hasRole(uint64,address)(bool,uint32)" "$rate_limiter_role" "$rl_grant_addr" --rpc-url "$fork_rpc" | head -n1 | awk '{print $1}')"
-  if [ "$member" != "true" ]; then
-    echo "FAIL: hasRole(RATE_LIMITER_ROLE, $rl_grant_addr) isMember=$member, expected true" >&2
-    exit 1
-  fi
-  echo "    ok: setTargetFunctionRole + grantRole landed via the folded atomic MultiSend"
+  local i got_role member
+  for i in $(seq 0 $(( ${#rl_escrows[@]} - 1 )) ); do
+    got_role="$(cast call "$access_manager" "getTargetFunctionRole(address,bytes4)(uint64)" "${rl_escrows[$i]}" "$rate_limit_set_sel" --rpc-url "$fork_rpc" | awk '{print $1}')"
+    [ "$got_role" = "$rate_limiter_role" ] || { echo "FAIL: escrow ${rl_escrows[$i]} setRateLimit role=$got_role, expected $rate_limiter_role" >&2; exit 1; }
+    member="$(cast call "$access_manager" "hasRole(uint64,address)(bool,uint32)" "$rate_limiter_role" "${rl_holders[$i]}" --rpc-url "$fork_rpc" | head -n1 | awk '{print $1}')"
+    [ "$member" = "true" ] || { echo "FAIL: hasRole(RATE_LIMITER, ${rl_holders[$i]})=$member" >&2; exit 1; }
+  done
+  echo "    ok: all ${#rl_escrows[@]} folded grants landed (setTargetFunctionRole + grantRole)"
 }
 
 # Execute the entire v3 upgrade as ONE atomic Safe MultiSend transaction, driven through the REAL Safe via
@@ -439,14 +449,24 @@ execute_atomic() {
 
   # 6. Submit the single atomic execTransaction through the real Safe; fail loudly on revert.
   echo "    execTransaction (operation=1/DelegateCall) from $exec_sender"
-  if ! cast send "$safe" \
+  local receipt
+  if ! receipt="$(cast send "$safe" \
       "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)" \
       "$to" 0 "$data" 1 0 0 0 "$zero_addr" "$zero_addr" "$sigs" \
-      --from "$exec_sender" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
+      --from "$exec_sender" --unlocked --rpc-url "$fork_rpc" --json)"; then
     echo "FAILED: atomic Safe MultiSend execTransaction reverted" >&2
     exit 1
   fi
   echo "    ok: v3 upgrade executed atomically via Safe MultiSend"
+  # Bundle-gas measurement (F9): record the atomic execute's gas against the block limit so a mainnet
+  # 10-sub-call bundle is known to fit. execTransaction status==1 here also proves the inner call did not
+  # silently fail (which it could only do with a non-zero safeTxGas under-estimate -- we pass 0).
+  local gas_used block_limit status
+  gas_used="$(jq -r '.gasUsed // empty' <<<"$receipt")"; gas_used="$(cast to-dec "$gas_used" 2>/dev/null || echo "$gas_used")"
+  status="$(jq -r '.status // empty' <<<"$receipt")"
+  block_limit="$(cast block latest --json --rpc-url "$fork_rpc" | jq -r '.gasLimit')"; block_limit="$(cast to-dec "$block_limit" 2>/dev/null || echo "$block_limit")"
+  echo "    bundle gas used: ${gas_used:-?}  (block gas limit: ${block_limit:-?}, status: ${status:-?})"
+  [ "$status" = "0x1" ] || [ "$status" = "1" ] || { echo "FAILED: execTransaction receipt status != success ($status)" >&2; exit 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -474,8 +494,10 @@ done < <(sp1_ids)
 # Captured into a variable first (capture-then-submit), exactly like the upgrade schedules above.
 if [ "$rehearse_rl_grant" = "1" ]; then
   prepare_rate_limiter_grant
-  submit "$rl_schedule" "schedule rate-limiter grant (fold rehearsal, client $rl_grant_cid)"
-  # Prove it is not in effect yet so the post-execute assertion actually proves the fold did the work.
+  for _i in $(seq 0 $(( ${#rl_schedules[@]} - 1 )) ); do
+    submit "${rl_schedules[$_i]}" "schedule rate-limiter grant #$((_i + 1))"
+  done
+  # Prove none are in effect yet so the post-execute assertion actually proves the fold did the work.
   assert_rate_limiter_grant_absent
 fi
 
@@ -499,8 +521,8 @@ submit_expect_revert "$data" "execute ICS26Router before ICS20Transfer"
 # exact production mechanism: execute-v3-upgrade-multisend appends it, the packer validates the 0x134008d3
 # execute selector, and execute_atomic's safeTxHash cross-check then covers the folded bundle too.
 if [ "$rehearse_rl_grant" = "1" ]; then
-  echo "==> Folding the rate-limiter grant execute into the atomic Safe MultiSend via EXTRA_TIMELOCK_OPS"
-  export EXTRA_TIMELOCK_OPS="$rl_execute"
+  echo "==> Folding ${#rl_executes[@]} rate-limiter grant execute(s) into the atomic Safe MultiSend via EXTRA_TIMELOCK_OPS"
+  export EXTRA_TIMELOCK_OPS="$rl_extra_ops"
 fi
 echo "==> Executing the v3 upgrade atomically via a single Safe MultiSend execTransaction"
 execute_atomic
