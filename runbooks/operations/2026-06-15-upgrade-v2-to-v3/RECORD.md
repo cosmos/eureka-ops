@@ -6,6 +6,8 @@ Durable record of the v2→v3 core upgrade (per-contract `AccessControl` → sha
 - **Procedure (authoritative):** [`../../upgrade-v2-to-v3.md`](../../upgrade-v2-to-v3.md) — do **not**
   follow a copy; that file is the single source of truth and is kept current.
 - **Role validation / testing:** [`../../post-upgrade-role-testing.md`](../../post-upgrade-role-testing.md).
+- **Mainnet cutover runsheet:** [`CUTOVER-RUNSHEET.md`](CUTOVER-RUNSHEET.md) — pre-filled, ordered
+  execution sheet for the 72 h window (mainnet values + decisions inlined).
 - **Status:** executed end-to-end on **Sepolia testnet (chain `11155111`)**; **mainnet (chain `1`) not yet executed.**
 - **Branch:** `operations/2026-06-15-upgrade-v2-to-v3`.
 

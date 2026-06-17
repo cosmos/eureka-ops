@@ -172,9 +172,23 @@ Result — all green:
 Combined with the unit checks — an unscheduled op → guard **refuses**; a freshly-scheduled
 pre-delay op → guard **passes** — the packer guard is validated on the actual mainnet path.
 
+**Staged-v6.1 variant — also green (2026-06-17).** Re-ran the same rehearsal with a
+`shadow-mainnet` JSON pre-staged to the *actual target SP1 state* — the v6.1 vkeys
+(`updateClient 0x00d38536…`) and the gateway verifier `0x397A5f7f…` on `cosmoshub-0` /
+`ledger-mainnet-1` (`SHADOW_FORK_PRESERVE_DEPLOYMENT=1`). The earlier run migrated to *pre-v6.1*
+clients; this one proves the v6.1/gateway config deploys, migrates, and verifies: `VerifyDeployment`
+passed for both migrated clients, and **`check-sp1-verifier` confirmed the gateway routes v6.1.0
+proofs to the real verifier `0xb69f2584…` (`VERSION v6.1.0`)** for `cosmoshub-0` / `ledger-mainnet-1`
+(and `client-4`). The only step-5 legs a fork can't cover remain the live trusted-state regen and
+the relayer lockstep.
+
 > The standard **testnet** timelock rehearsal can no longer run: its deployment JSON is now
 > post-upgrade, so the deploy-only step refuses (`accessManager` already set). The mainnet-fork
 > rehearsal is the one to use from here.
+
+A pre-filled, ordered **cutover runsheet** for the 72 h window now lives at
+[`runbooks/operations/2026-06-15-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md`](runbooks/operations/2026-06-15-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md)
+— every command with the mainnet values and decisions inlined.
 
 ## The mainnet cutover plan (single 72 h round)
 
