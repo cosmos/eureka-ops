@@ -8,7 +8,9 @@ nonce). This is the operating sheet — the **why** lives in
 
 > **One-shot.** Everything that must take effect at cutover is scheduled in **one** step-6 window
 > and folded into **one** atomic step-7 MultiSend; a second 72 h round is the failure mode to avoid.
-> Halt relaying for the execute→verify span only.
+> **Relaying is NOT halted on mainnet** — there is no clean halt. The prod relayer stays on the *old*
+> build through the window and is *upgraded* right after the execute (steps 5e / 5f / 8a), so the gap is a
+> brief restart, not an outage. Do not try to stop relaying.
 
 ## Fixed mainnet values
 
@@ -71,8 +73,19 @@ export ETH_RPC=<mainnet RPC>        # also exported as FOUNDRY_ETH_RPC_URL by th
 - [ ] **On-chain pause ≠ off-chain halt.** Do **not** `ops-pause-transfers` for the cutover — the on-chain
       pause is a 4-of-7 governance action (unpause is *also* 4-of-7) and is unrelated to the relayer transition
       (steps 5e/8a). The cutover needs no contract pause. See `runbooks/pause.md`.
-- [ ] **Trusted-state freshness:** the SP1 trusted state from step 5a has a ~14 d trusting period; if the
-      schedule slips, re-check freshness (re-run step 5a) **before** the Phase-C execute.
+- [ ] **Trusted-state freshness (C3):** the SP1 trusted state from step 5a is valid for the client's
+      **trusting period** (≈ the unbonding period, ~14 d). Re-derive the **age** at ceremony time
+      (now − trusted-state timestamp) and **re-run step 5a if age > ⅔ of the trusting period**, so the 72 h
+      delay + execute land with margin. A lapse → the migrated client can't be updated → another 72 h round.
+- [ ] **End-to-end proof test (C4) — DEFINITIVE.** vkey-matching (`sp1-vkeys` / `check-relayer-vkeys`) proves
+      the relayer loaded the right *programs* but NOT that its prover emits proofs the on-chain v6.1.0 verifier
+      accepts (proof format depends on the prover's SP1-SDK version). Before scheduling: drive the new-build
+      proof-api to produce a real `updateClient` proof and **verify it lands against a fork-migrated mainnet
+      client** (the staged-v6.1 fork), and **record the prover SP1-SDK version** so prod runs the identical
+      prover. *(Single operator, no backup ⇒ the definitive test, not just a testnet witness.)*
+- [x] **Authority & roles (decided):** single **authority** = the operator (go/no-go **and** abort); single
+      **proposer** (Ledger idx 1) + single **coordinator**; **single-point roles accepted, no backups** (C7/C12).
+      The 4-of-7 governance + 2-of-5 customizer Safes provide signing breadth, not operator redundancy.
 
 ---
 
@@ -177,13 +190,28 @@ each `safeTxHash` (see appendix) before approving.
 
 ## Phase C — Wait the 72 h delay, then atomic execute (step 7)
 
+**During the delay — monitor (C9).** Don't just re-check at the end; over the 72 h watch for:
+a `Cancelled(bytes32)` event on the timelock (someone cancelled a scheduled op); any **unexpected Safe
+transaction queued at the reserved execute nonce** (would change what executes at that nonce); a gateway
+**route freeze** (re-run `verify-roots.sh`); and **new-build proof-api health**. Any surprise → investigate
+before executing.
+
 **Just before executing — in order:**
 1. Confirm the **72 h delay elapsed**. (Leave the prod relayer **on the old build** — it's still relaying
    normally; the upgrade happens *after* the execute, step 8a. There is no clean halt, and none is needed.)
 2. Re-run the gates — both must be clean:
    ```bash
    python3 scripts/discover-v2-roles.py mainnet 1 && echo OK          # now fail-closed; must exit 0
-   ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1 # must be 13/13
+   ETH_RPC=<rpc> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1 # must end "ALL TRUST-ROOT CHECKS PASSED"
+   ```
+3. **No migrated client is frozen (C5).** A freeze applied during the window (misbehaviour) would be
+   silently undone by `migrateClient` — confirm `isFrozen=false` for each, and **investigate any frozen
+   client before migrating over it**:
+   ```bash
+   for cid in cosmoshub-0 ledger-mainnet-1; do
+     cl=$(cast call 0x3aF134307D5Ee90faa2ba9Cdba14ba66414CF1A7 'getClient(string)(address)' "$cid")
+     cast call "$cl" 'getClientState()(bytes)'   # decode field 6 (isFrozen bool) — must be false
+   done
    ```
 
 **Build + propose the atomic MultiSend** — the 6 core/migration executes + the **4** rate-limiter grant
@@ -289,6 +317,13 @@ cancel/stand-down just means **never doing 8a** (relaying keeps working on v2 th
   (the upgrade simply hasn't happened) and regroup.
 - **Cannot proceed after the delay elapses:** choose explicitly — (a) stand down (skip 8a; v2 keeps relaying),
   or (b) cancel + reschedule a fresh 72 h round.
+- **Execute SUCCEEDED but step-11 verification FAILS (C10):** you **cannot cancel** — it already landed, the
+  chain is v3, and `cancel()` only works pre-execute. Do **NOT** do 8a (don't upgrade the relayer into a bad
+  state). The fix is **forward-only**: identify the specific defect (a mis-wired role, a missed escrow init, a
+  bad migration), and correct it via a **new timelock round** (schedule the corrective op → 72 h → execute) —
+  the same machinery, scoped to the fix. Escrow `initializeV2` and role grants are independently re-issuable;
+  a bad SP1 migration is re-done with a fresh `migrateClient`. Until corrected, relaying stays on the old
+  build (down for the affected client) — communicate the extended window. There is no "undo" to v2.
 
 ## Abort / failure notes
 

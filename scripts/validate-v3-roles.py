@@ -69,14 +69,17 @@ TARGET_ROLES = [
 ]
 SET_RATE_LIMIT_SEL = "0xd34a3fd9"
 
-# role id -> JSON key holding its configured members. RATE_LIMITER(5) is NOT auto-migrated (it is
-# re-granted in runbook step 10), so it has no holders pre-step-10 (e.g. testnet) but a NON-EMPTY
-# set afterwards (e.g. mainnet). Read it from an optional `.accessManagerRoles.rateLimiters` array
-# so the post-step-10 run matches exactly instead of flagging the live holders as UNEXPECTED and
-# exiting non-zero. Absent key -> empty set -> the pre-step-10 behavior is unchanged.
+# RATE_LIMITER(5) and rateLimitedEscrows are read TOP-LEVEL, falling back to `.accessManagerRoles.*`.
+# They MUST live top-level on mainnet: `DeployV3AccessManager._writeAccessManagerRoles` rewrites the whole
+# `.accessManagerRoles` object from struct fields at step 2, so a value nested there is silently dropped
+# before this post-cutover run. (5) is NOT auto-migrated (re-granted in step 10), so it is empty pre-step-10
+# (testnet) and non-empty afterwards (mainnet); the pre-staged set lets the validator hard-fail on a missed grant.
+def cfg(key):  # top-level wins; then the legacy nested location; else empty.
+    return DEPLOY.get(key) or ROLES.get(key) or []
+
 ROLE_JSON_KEY = {1:"relayers", 2:"pausers", 3:"unpausers", 4:"delegateSenders",
-                 5:"rateLimiters", 6:"idCustomizers", 7:"erc20Customizers"}
-EXPECTED = {0: {ROLES["admin"].lower()}}
+                 6:"idCustomizers", 7:"erc20Customizers"}   # 5 handled separately via cfg()
+EXPECTED = {0: {ROLES["admin"].lower()}, 5: {a.lower() for a in cfg("rateLimiters")}}
 for rid, key in ROLE_JSON_KEY.items():
     EXPECTED[rid] = {a.lower() for a in ROLES.get(key, [])}
 
@@ -165,7 +168,7 @@ for label, addr in targets:
 # every holder leaves membership complete even if an intended escrow was never wired. Escrows NOT in the list
 # stay informational, so the by-design pre-grant state (TODO #559: escrows unwired until granted; testnet has
 # an empty list) is unchanged and still passes.
-RATE_LIMITED = {c.strip() for c in ROLES.get("rateLimitedEscrows", []) if c.strip()}
+RATE_LIMITED = {c.strip() for c in cfg("rateLimitedEscrows") if c.strip()}
 print("\n=== D. Escrow setRateLimit gating ===")
 for cid, e in escrows.items():
     r = int(cast("call", AM, "getTargetFunctionRole(address,bytes4)(uint64)", e, SET_RATE_LIMIT_SEL))

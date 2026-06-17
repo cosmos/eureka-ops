@@ -192,9 +192,10 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
    - `RevokeRole.sol` refuses to revoke `ADMIN_ROLE` (id 0) unless `ALLOW_REVOKE_ADMIN=true`, so a
      fat-fingered `REVOKE_ROLE=0` can't brick governance.
    Validated on-chain against a real (Sepolia-fork) timelock: a freshly-scheduled op →
-   `isOperationPending=true` (passes, even pre-delay); an unscheduled op → `false` (refused). Still
-   wants a full mainnet-fork `shadow-v2-to-v3-mainnet-timelock` rehearsal as part of cutover prep
-   (the testnet rehearsal can't run now — its JSON is post-upgrade).
+   `isOperationPending=true` (passes, even pre-delay); an unscheduled op → `false` (refused). The full
+   mainnet-fork rehearsal was subsequently **done** — see "Single-round folding mechanism" below (the exact
+   10-op fold, 2026-06-17), and the staged-v6.1 variant (migrating to the v6.1 vkeys + gateway,
+   `check-sp1-verifier` green). The testnet rehearsal can no longer run — its JSON is post-upgrade.
 
 | Thing | Address / value |
 | --- | --- |

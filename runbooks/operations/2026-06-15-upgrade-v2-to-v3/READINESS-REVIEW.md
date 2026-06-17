@@ -332,7 +332,8 @@ beacon upgrade recipes would turn the "forgot step 4 → no-op self-upgrade" foo
 - **`.eureka-env` hygiene** T-minus item (unset `PRIVATE_KEY`; confirm env = mainnet/chain 1);
   **pause ≠ halt** clarification; **trusted-state freshness** pre-execute check.
 - **Strengthen the signer-prep gate** (freeze `signer-verify.sh`, post its `sha256`, generate the
-  expected-hash table from source, **second reviewer regenerates and matches**). **Closes Review A F4.**
+  expected-hash table from source, **second reviewer regenerates and matches**). **Closes Review A's
+  signer-placeholder finding** (§5.2's "signer SHA/table").
 
 ### 6.5 Additional fork rehearsal
 

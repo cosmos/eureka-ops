@@ -5,7 +5,7 @@
 - **Auth model.** v3 replaces per-contract `AccessControl` with a shared OpenZeppelin `AccessManager`.
 - **Core upgrade order is mandatory:** `ICS20Transfer` → `ICS26Router` → `Escrow` beacon → `IBCERC20` beacon. `ICS20Transfer.initializeV2` authenticates against v2 admin records still stored on `ICS26Router`, and `ICS26Router.initializeV2` deletes them — upgrading the router first makes the transfer upgrade revert. Each `ICS20Transfer`/`ICS26Router` `upgradeToAndCall` must call `initializeV2(accessManager)`.
 - **Escrows:** after the escrow beacon upgrade, every escrow proxy needs a one-time `Escrow.initializeV2()` (callable by anyone, once each).
-- **Atomic execute (step 7).** All timelock executes are submitted as one Safe MultiSend, so the chain never settles in a mixed v2/v3 state. Halt relaying around it anyway as defense-in-depth.
+- **Atomic execute (step 7).** All timelock executes are submitted as one Safe MultiSend, so the chain never settles in a mixed v2/v3 state. Halt relaying around it as defense-in-depth *where the deployment supports it*; **on mainnet there is no clean halt** — the relayer stays on the old build through the window and is upgraded right after the execute (see the cutover runsheet steps 5e/5f/8a).
 - **SP1 v6.1.** Light clients are standalone contracts — upgrading the core proxies does not touch them. Each client needs a fresh `SP1ICS07Tendermint` deployment plus a timelocked `ICS26Router.migrateClient(...)`, in this same operation/timelock window. `migrateClient` is now AccessManager-controlled (no per-client migrator role); integrators that need self-owned client migration must move to a proxy-style client design.
 - **vkeys + relayer lockstep.** Set vkeys from the **published `sp1-programs` release** the prover loads, never the repo test fixtures (which can build non-reproducibly and differ). The prod proof-api/relayer must be cut over to a build of that same release **in lockstep** with the on-chain migration, or migrated clients' proofs will not verify.
 - **Expected-failure windows — do NOT "fix":**
@@ -279,7 +279,8 @@ just safe-propose <multisend_to> <multisend_data> <execute_safe_nonce> 1
 > `safeTxHash` before posting (the EIP-712 sign path was confirmed on a real Ledger 2026-06-17). In every case each
 > signer must verify **on-device** that `to == 0x9641d764…`, `operation == DelegateCall`, and the
 > `safeTxHash` equals the recipe's recomputed value (next paragraph) **before** approving. Assign
-> explicit owners for halting and resuming relaying around the window, and run steps 7 → 9 → 11
+> an explicit owner for the **relayer upgrade** after the execute (mainnet has no clean halt — the cut is
+> the relayer upgrade at runsheet step 8a), and run steps 7 → 9 → 11
 > back-to-back to keep it short.
 
 **Verify before signing (critical for a DelegateCall):** a delegatecall runs the target's code with the Safe as `msg.sender`, so before signing confirm on your device that `to` == the canonical MultiSendCallOnly (`0x9641d764fc13c8B624c04430C7356C1C7C8102e2`, or your `MULTISEND_CALL_ONLY` override) and `operation` == DelegateCall — **reject any other `to`** — and that the `safeTxHash` matches `just execute-v3-upgrade-multisend <execute_safe_nonce> <client_ids>` recomputed at that nonce.

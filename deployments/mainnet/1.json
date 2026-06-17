@@ -64,16 +64,17 @@
     ],
     "erc20Customizers": [
       "0x4b46ea82D80825CA5640301f47C035942e6D9A46"
-    ],
-    "rateLimiters": [
-      "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
-      "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
-    ],
-    "rateLimitedEscrows": [
-      "cosmoshub-0",
-      "ledger-mainnet-1"
     ]
   },
+  "_comment_rateLimiters": "Validation-only (consumed by scripts/validate-v3-roles.py). Kept TOP-LEVEL, NOT under .accessManagerRoles, because DeployV3AccessManager's _writeAccessManagerRoles rewrites that whole object from struct fields and would drop these. Re-confirm against discover-v2-roles before cutover.",
+  "rateLimiters": [
+    "0x4b46ea82D80825CA5640301f47C035942e6D9A46",
+    "0x64259f722A0868CCf58A935C61A292cEA9dF035a"
+  ],
+  "rateLimitedEscrows": [
+    "cosmoshub-0",
+    "ledger-mainnet-1"
+  ],
   "ics27Gmp": {
     "implementation": "0x0000000000000000000000000000000000000000",
     "accountImplementation": "0x0000000000000000000000000000000000000000",

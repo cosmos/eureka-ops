@@ -52,23 +52,32 @@ chk "CANCELLER = Safe"  "$(call "$TL" 'hasRole(bytes32,address)(bool)' "$CANC" "
 chk "DEFAULT_ADMIN = Timelock (self-admin)" "$(call "$TL" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$TL")" "true"
 chk "DEFAULT_ADMIN = Safe (must be false)"  "$(call "$TL" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$SAFE")" "false"
 
-# Stray-admin reconstruction: the ONLY DEFAULT_ADMIN holder must be the timelock itself.
-if [ -n "${FROM_BLOCK:-}" ]; then
-  echo "  -- reconstructing DEFAULT_ADMIN holders from events (from block $FROM_BLOCK) --"
-  admins=""
-  while IFS= read -r a; do admins="$admins $a"; done < <(
+# Reconstruct every holder a timelock role was EVER granted, and assert none outside the allowed set is
+# still active. Covers DEFAULT_ADMIN (self-admin), and CANCELLER/PROPOSER -- a stray CANCELLER can cancel()
+# a scheduled op mid-delay (grief the 72 h round); a stray PROPOSER can schedule a malicious op.
+stray_check() {  # stray_check <roleHash> <roleName> <allowed-addr>...
+  local role="$1" name="$2"; shift 2
+  local allowed=" "; local a; for a in "$@"; do allowed="$allowed$(lc "$a") "; done
+  local h held s=0 holders=""
+  while IFS= read -r h; do holders="$holders $h"; done < <(
     cast logs 'RoleGranted(bytes32 indexed,address indexed,address indexed)' --address "$TL" \
-      --from-block "$FROM_BLOCK" --to-block latest "$ADMIN_ROLE" --rpc-url "$RPC" --json 2>/dev/null \
+      --from-block "$FROM_BLOCK" --to-block latest "$role" --rpc-url "$RPC" --json 2>/dev/null \
       | jq -r '.[].topics[2]' | sed 's/^0x000000000000000000000000/0x/' | sort -u)
-  stray=0
-  for a in $admins; do
-    [ "$(lc "$a")" = "$(lc "$TL")" ] && continue
-    held="$(call "$TL" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$a")"
-    [ "$held" = "true" ] && { bad "STRAY DEFAULT_ADMIN holder still active: $a"; stray=1; }
+  for h in $holders; do
+    [ -n "$h" ] || continue
+    case "$allowed" in *" $(lc "$h") "*) continue ;; esac
+    held="$(call "$TL" 'hasRole(bytes32,address)(bool)' "$role" "$h")"
+    [ "$held" = "true" ] && { bad "STRAY $name holder still active: $h"; s=1; }
   done
-  [ "$stray" = 0 ] && ok "no stray DEFAULT_ADMIN holders (only the timelock)"
+  [ "$s" = 0 ] && ok "no stray $name holders (only the expected $name set)"
+}
+if [ -n "${FROM_BLOCK:-}" ]; then
+  echo "  -- reconstructing timelock role holders from events (from block $FROM_BLOCK) --"
+  stray_check "$ADMIN_ROLE" "DEFAULT_ADMIN" "$TL"
+  stray_check "$CANC" "CANCELLER" "$SAFE"
+  stray_check "$PROP" "PROPOSER" "$SAFE"
 else
-  echo "  INFO  set FROM_BLOCK=<timelock deploy block> to also reconstruct stray DEFAULT_ADMIN holders"
+  echo "  INFO  set FROM_BLOCK=<timelock deploy block> to reconstruct stray DEFAULT_ADMIN/CANCELLER/PROPOSER holders"
 fi
 
 echo "=== B. Governance Safe ($SAFE) ==="
@@ -77,6 +86,19 @@ owners="$(call "$SAFE" 'getOwners()(address[])' | tr -d '[]' | tr ',' '\n' | tr 
 ocount="$(printf '%s\n' "$owners" | grep -c '^0x' || true)"
 [ "$ocount" = "$EXP_OWNERS" ] && ok "owner count = $ocount" || bad "owner count = $ocount (expected $EXP_OWNERS)"
 echo "  owners (eyeball against the signer table):"; printf '%s\n' "$owners" | sed 's/^/      /'
+
+echo "=== B2. Customizer Safe (UN-timelocked authority — step 8 / setCustomERC20) ==="
+CUST="$(jq -re '.accessManagerRoles.idCustomizers[0] // empty' "$DEP" 2>/dev/null || true)"
+if [ -z "$CUST" ] || [ "$(lc "$CUST")" = "$ZERO" ]; then
+  echo "  INFO  no idCustomizer in $DEP"
+elif ! call "$CUST" 'getThreshold()(uint256)' >/dev/null 2>&1; then
+  echo "  INFO  customizer $CUST is not a Safe (EOA, e.g. testnet) — no owners/threshold to assert"
+else
+  chk "customizer Safe threshold" "$(call "$CUST" 'getThreshold()(uint256)' | awk '{print $1}')" "${EXP_CUST_THRESH:-2}"
+  cust_owners="$(call "$CUST" 'getOwners()(address[])' | tr -d '[]' | tr ',' '\n' | tr -d ' ' | grep -cE '^0x' || true)"
+  [ "$cust_owners" = "${EXP_CUST_OWNERS:-5}" ] && ok "customizer Safe owner count = $cust_owners" \
+    || bad "customizer Safe owner count = $cust_owners (expected ${EXP_CUST_OWNERS:-5})"
+fi
 
 echo "=== C. SP1 verifier gateway route ($GATEWAY) ==="
 # selector = first 4 bytes of the real verifier's VERIFIER_HASH (NOT a fixed constant)
@@ -89,16 +111,17 @@ if [ -z "$vh" ]; then bad "could not read VERIFIER_HASH() from $REAL_VERIFIER"; 
   chk "route frozen == false" "${frozen:-?}" "false"
 fi
 
-echo "=== D. Escrows: JSON consistency + stray-escrow probe ==="
+echo "=== D. Escrows: enumeration + stray probe ==="
+# The light_clients have no `escrow` field, so there is no per-client equality to assert here -- the real
+# assertion is the stray-escrow probe below (no escrow outside the JSON clients). We collect each JSON
+# client's on-chain escrow into json_escrows for that probe and print it for the operator to eyeball vs RECORD.
 ICS20="$(jq -re '.ics20Transfer.proxy' "$DEP")"
 json_escrows=""
 while IFS= read -r cid; do
   [ -n "$cid" ] || continue
   onchain="$(call "$ICS20" 'getEscrow(string)(address)' "$cid")"
   json_escrows="$json_escrows $(lc "$onchain")"
-  jsonesc="$(jq -r --arg c "$cid" '(.light_clients | to_entries[] | select(.value.clientId==$c) | .value.escrow) // empty' "$DEP")"
-  if [ -n "$jsonesc" ] && [ "$jsonesc" != "$ZERO" ]; then chk "escrow $cid" "$onchain" "$jsonesc"
-  else echo "  INFO  escrow $cid -> $onchain"; fi
+  echo "  INFO  escrow $cid -> $onchain"
 done < <(jq -r '.light_clients[].clientId // empty' "$DEP")
 # Best-effort enumeration: probe the client-N series for an escrow that is NOT one of the JSON clients'
 # (getEscrow returns the zero address for an unregistered client). This closes the "rate-limiter holder on

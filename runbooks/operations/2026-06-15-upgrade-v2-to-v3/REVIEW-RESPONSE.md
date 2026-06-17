@@ -8,22 +8,28 @@ feedbacks. Maps every finding to its resolution, the commit that made it, and a 
 
 ## TL;DR
 
-- **Every actionable finding is addressed**; nothing required a contract change (the verified-solid
-  mechanical core is untouched).
-- Two findings were **owner-clarified** after the reviews and changed the fix: **F1 relayer timing** (there
-  is *no clean halt* — the relayer stays on the old build through the delay and is *upgraded* after the
-  execute; brief restart, not a 72 h outage) and **F5 packets** (delayed-not-lost ⇒ best-effort quiesce).
-- I also **corrected two of my own errors** the doc-feedback caught (the "membership ⟺ wiring" claim; the
-  "amber-go" wording), and **pushed back** where a finding was overstated (F4 front-run DoS not exploitable;
-  F2 route not frozen; F6 file not a "committed cache"; F9 already half-done) — all verified on-chain/in-code.
-- New empirical evidence, all re-runnable: **`verify-roots.sh` 13/13** on mainnet, **`validate-v3-roles` 32/32**
-  on testnet, the **exact 10-op fold** rehearsed on a mainnet fork (**≈ 616k gas**), and the `signer-verify`
-  attack battery.
+- Addresses **all findings from Review A, Review B (F1–F10 + footguns), and the two `READINESS-REVIEW`
+  feedbacks**, plus **Round 2** (this section's reviewers): a real bug they caught (**F3-keys-wiped**), the
+  doc contradictions, and the coverage-critic gaps **C1–C12** — each now fixed or explicitly scoped (see
+  "Round 2" below and the C1–C12 table). *Earlier drafts of this doc over-claimed "every actionable finding";
+  that was wrong and is corrected here.* No contract changes.
+- Two findings were **owner-clarified**: **F1 relayer timing** (no clean halt — relayer stays on the old
+  build through the delay, *upgraded* after the execute; brief restart) and **F5 packets** (delayed-not-lost
+  ⇒ best-effort quiesce).
+- I **corrected three of my own errors** caught across rounds (the "membership ⟺ wiring" claim; the
+  "amber-go" wording; **the F3 keys nested under `.accessManagerRoles` were silently wiped by the deploy** —
+  now moved top-level and **proven to survive** a fork deploy), and **pushed back** where findings were
+  overstated (F4 front-run DoS not exploitable; F2 route not frozen; F6 file not a "committed cache").
+- Empirical evidence, re-runnable: **`verify-roots.sh` 17/17** on mainnet (with `FROM_BLOCK=22188631`),
+  **`validate-v3-roles` 32/32** on testnet, the **exact 10-op fold** on a mainnet fork (**≈ 616k gas**), the
+  `signer-verify` attack battery, and the **F3-survives-deploy** fork test.
 
 ## Commits to review (newest first)
 
 | Commit | What it covers |
 | --- | --- |
+| *(round 2 — this batch)* | F3 keys → top-level (proven to survive deploy); verify-roots C1/C2 (customizer Safe, stray CANCELLER/PROPOSER); doc contradictions (line 11, canonical halt, RECORD :196, orphan ref); C3/C4/C5/C7/C9/C10/C12 runbook; REVIEW-RESPONSE corrections |
+| `3a86cc5` | review-response doc + 3 footgun items (env hygiene, pause≠halt, trusted-state) |
 | `629ca1c` | corrected relayer/halt model (F1/F5); `verify-roots` from-block + escrow probe (F4, escrow blind spot) |
 | `1e5ca10` | 10-op fold rehearsal (F8/F9) + runbook sequencing (F1/F5/F7/FA4 + cancel tree) |
 | `823af00` | the two `READINESS-REVIEW` feedbacks (amber-go, fail-closed, VerifyDeployment scope, membership⟺wiring, canary, …) |
@@ -31,28 +37,35 @@ feedbacks. Maps every finding to its resolution, the commit that made it, and a 
 | `8414c36` | signer verification tool + checklist (predates the reviews; underlies F7/FA3) |
 | `568ed99` | ledger proposer + timelock-pending & admin-revoke guards (predates the reviews) |
 
-`git diff 188912e..HEAD` is the full delta (18 files, ~no contract changes).
+`git diff 188912e..HEAD` is the full delta (≈19 files, **no contract changes**).
 
 ---
 
-## One-shot re-validation (run these)
+## One-shot re-validation (run these — all literally runnable)
 
 ```bash
-# 1. Trust roots — F2/F4/F10 + escrow enumeration, all asserted (expect "13/13 ... ALL TRUST-ROOT CHECKS PASSED")
+H1=0x4b46ea82D80825CA5640301f47C035942e6D9A46; H2=0x64259f722A0868CCf58A935C61A292cEA9dF035a
+
+# 1. Trust roots (17/17). FROM_BLOCK is REQUIRED — without it the stray-admin/CANCELLER/PROPOSER scan is
+#    skipped and you get a smaller count. Expect "ALL TRUST-ROOT CHECKS PASSED".
 ETH_RPC=<mainnet> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1
 
-# 2. Role validation incl. the new conditional rate-limiter wiring gate (expect "32 passed, 0 failed")
+# 2. Role validation incl. the conditional rate-limiter wiring gate (expect "32 passed, 0 failed")
 ETH_RPC=<testnet> python3 scripts/validate-v3-roles.py testnet 11155111
 
-# 3. Discovery is now fail-closed (expect a non-zero exit if any holder is MISSING/unidentified)
-echo "exit code semantics: sys.exit(1) when issues>0"   # scripts/discover-v2-roles.py tail
+# 3. Discovery is fail-closed: a missing holder / unidentified role => non-zero exit
+ETH_RPC=<mainnet> ETHERSCAN_API_KEY=<key> python3 scripts/discover-v2-roles.py mainnet 1; echo "exit=$?"
 
-# 4. Signer tool — the inner-calldata attack battery (manual mode, needs only `cast`)
-#    a grantRole(ADMIN/role 0) inside a schedule, a non-execute MultiSend sub-call, a delegatecall to a
-#    non-MultiSend target, wrong gas/value, --expect-subcalls mismatch  -> each prints REJECT.
+# 4. Signer tool attack battery (manual mode, needs only cast) — each bad case prints REJECT, exit 1:
+G=0x7B96CD54aA750EF83ca90eA487e0bA321707559a
+# (a) delegatecall to a non-MultiSend target:
+scripts/signer-verify.sh 1 $G --to 0x000000000000000000000000000000000000dEaD --data 0x12345678 --operation 1 --nonce 1
+# (b) build a schedule(grantRole(ADMIN/role 0, attacker)) and feed it --operation 0 -> "grants role 0" REJECT
+# (c) a multiSend with --expect-subcalls 10 vs an actual 1-subcall bundle -> count-mismatch REJECT
+# (full reproducible battery in the earlier validation run / git history)
 
 # 5. The exact 10-op mainnet fold on a fork (4 core + 2 migrations + 4 rate-limiter grants)
-RL_GRANTS="cosmoshub-0:0x4b46ea82…,cosmoshub-0:0x64259f72…,ledger-mainnet-1:0x4b46ea82…,ledger-mainnet-1:0x64259f72…" \
+RL_GRANTS="cosmoshub-0:$H1,cosmoshub-0:$H2,ledger-mainnet-1:$H1,ledger-mainnet-1:$H2" \
 SP1_CLIENT_IDS="cosmoshub-0,ledger-mainnet-1" \
   bash scripts/shadow-v2-to-v3-timelock-rehearsal.sh 1 mainnet shadow-mainnet <fork-rpc>
 #   -> "10 total sub-calls", safeTxHash matches on-chain, "bundle gas used: 616104", "all 4 folded grants landed"
@@ -118,6 +131,44 @@ procedurally — "decode every payload"); `client-4` left in `1.json` (intention
 | F9 over-scoped | Acknowledged the redundant assert; kept the substantive gas measurement. | `823af00` |
 | record the on-chain evidence | `RECORD.md` "Trust-root verification" subsection (commands + results + deploy block). | `823af00`, `629ca1c` |
 | selector not a constant / pin `proofApiSrcChain` | Footnoted the derived selector; pinned `proofApiSrcChain` to RECORD. | `823af00` |
+
+---
+
+## Round 2 — response to the three follow-up reviews
+
+The follow-up reviewers re-ran the validators (reproducing 13/13, 32/32, 616k gas, the attack battery) and
+found a **real bug**, **doc contradictions**, and additional **coverage gaps C1–C12** that the earlier
+REVIEW-RESPONSE neither fixed nor acknowledged. All verified against source and addressed:
+
+**The real bug (HIGH):** `DeployV3AccessManager._writeAccessManagerRoles` (`Deployments.sol:74-83`) rewrites
+the whole `.accessManagerRoles` object from struct fields, so the F3 keys I'd pre-staged *under* it were
+silently wiped at step 2 (the reviewer confirmed via the shadow JSON). **Fix:** moved `rateLimiters` /
+`rateLimitedEscrows` **top-level** (the deploy's path-scoped `writeJson` leaves siblings intact) and updated
+`validate-v3-roles.py` to read them there. **Proven:** a fork deploy-only ran (`.accessManagerRoles`
+rewritten to exactly its 7 fields), and the **top-level keys survived**. testnet validate still 32/32.
+
+**Doc contradictions (all fixed):** runsheet line 11 ("Halt relaying…") → the no-halt framing; canonical
+runbook halt lines `:8`/`:282`; RECORD `:196` ("still wants a rehearsal" → done); the orphan "Closes Review A
+F4"; and the vacuous verify-roots §D escrow `chk` (dropped — the `client-0..19` stray-probe is the real
+assertion). `FROM_BLOCK=22188631` baked into the runsheet gate command.
+
+**Coverage gaps C1–C12:**
+
+| # | Gap | Disposition |
+| --- | --- | --- |
+| **C1** | customizer 2-of-5 Safe (un-timelocked) unasserted | **Done** — `verify-roots.sh` §B2 (threshold 2 / 5 owners) |
+| **C2** | stray CANCELLER/PROPOSER not enumerated | **Done** — event reconstruction in `verify-roots.sh` (now 17/17) |
+| **C5** | no pre-execute client `isFrozen` stop | **Done** — runsheet Phase-C gate 3 (getClient→getClientState) |
+| **C3** | trusted-state freshness soft / "~11d" prose | **Done** — concrete ⅔-trusting-period threshold in T-minus |
+| **C4** | end-to-end proof path (vkey-only) | **Wired** — DEFINITIVE T-minus gate: real `updateClient` proof on the staged-v6.1 fork + record prover SDK version |
+| **C10** | execute-succeeds-but-verify-fails | **Done** — forward-fix branch in the abort tree |
+| **C9** | no 72h monitoring | **Done** — Phase-C monitoring note (Cancelled event, reserved nonce, route freeze, proof-api health) |
+| **C7 / C12** | go/no-go authority; single-point roles | **Decided** — single authority/proposer/coordinator, **no backups accepted** (recorded in T-minus) |
+| **C6 / C8 / C11** | counterparty expiry / §6 owners / external comms | Mooted by the no-outage model / done / reduced — noted |
+
+**Honesty corrections to this doc:** removed "every actionable finding addressed" (it omitted C1–C12); the
+trust-root number is **17/17 and requires `FROM_BLOCK`**; the validation block is now literally runnable; file
+count ≈19; `safeTxGas` assert is at `signer-verify.sh:135`; commit `3a86cc5` + the round-2 commit added above.
 
 ---
 
