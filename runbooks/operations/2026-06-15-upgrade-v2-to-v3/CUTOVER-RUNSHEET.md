@@ -65,6 +65,14 @@ export ETH_RPC=<mainnet RPC>        # also exported as FOUNDRY_ETH_RPC_URL by th
       (+ its `sha256`) to **both** signer sets over a trusted channel; each signer has run the one-time setup
       and `cast --version` works (Windows signers on WSL). The per-nonce **expected-hash table** is generated
       from source and **independently re-checked by a second reviewer**, then published the same way.
+- [ ] **Env hygiene:** `.eureka-env` ships a hot *testnet* `PRIVATE_KEY` the Phase-A broadcasts would use —
+      **unset `PRIVATE_KEY`** and confirm the env points at mainnet (`just info-env` / `echo $EUREKA_CHAIN` = 1)
+      before any deploy/escrow-init.
+- [ ] **On-chain pause ≠ off-chain halt.** Do **not** `ops-pause-transfers` for the cutover — the on-chain
+      pause is a 4-of-7 governance action (unpause is *also* 4-of-7) and is unrelated to the relayer transition
+      (steps 5e/8a). The cutover needs no contract pause. See `runbooks/pause.md`.
+- [ ] **Trusted-state freshness:** the SP1 trusted state from step 5a has a ~14 d trusting period; if the
+      schedule slips, re-check freshness (re-run step 5a) **before** the Phase-C execute.
 
 ---
 
