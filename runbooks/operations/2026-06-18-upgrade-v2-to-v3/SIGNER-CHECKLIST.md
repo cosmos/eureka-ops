@@ -1,43 +1,45 @@
 # Safe signer checklist — v3 upgrade (schedule round)
 
-You're signing the **8 scheduling transactions, nonces 18–25**, on the governance Safe
-`0x7B96CD54aA750EF83ca90eA487e0bA321707559a` — **one signature each, in any order.** For each:
-**run one command → it prints the values to expect → confirm your Safe UI + Ledger match them → sign.**
-The command runs **offline** from the repo you checked out (only `cast`); nothing is signed until you
-approve on the Ledger. Your real protection is the **card-vs-Safe-UI-vs-Ledger** comparison below.
+How to **validate** the 8 scheduling transactions (nonces **18–25**) on the governance Safe
+`0x7B96CD54aA750EF83ca90eA487e0bA321707559a` before you approve them. For each: **run one command — it
+prints the values that transaction must have — and confirm they match.** Validation runs **offline** (only
+`cast`): the command reads the published payload from the repo and recomputes every value itself.
 
-> ## ⛔ Do NOT sign unless **both** are true
+> ## ⛔ A transaction validates only if **both** are true
 > 1. the command ends with a single `PASS` and `echo $?` prints `0`; **and**
-> 2. your Safe UI + Ledger match the printed card **exactly**.
+> 2. every value it prints matches what the transaction shows (Safe UI → Advanced details, and the hashes
+>    your signing device displays).
 >
-> Any `REJECT`, a non-zero exit, a `to`/`operation`/`data`/hash in the UI or on the Ledger that doesn't
-> match the card, or **more than one transaction at the nonce** → **don't sign.** Screenshot it, report
-> over the trusted channel, and wait for an all-clear before any signer signs.
+> Any `REJECT`, a non-zero exit, a `to`/`operation`/`data`/hash that doesn't match, or **more than one
+> transaction at the nonce** → it does **not** validate. Don't approve it — screenshot it, report over the
+> trusted channel, and wait for an all-clear.
 
-## Each transaction
+## Validate each transaction
 
-1. **Open the Safe** (pinned link → confirm it says **Ethereum** and the address matches):
-   [queue](https://app.safe.global/transactions/queue?safe=eth:0x7B96CD54aA750EF83ca90eA487e0bA321707559a).
-   Note the **nonce**. If it isn't one of the rows below (18–25) → **stop & report**.
-2. **Generate the expected card** — from the repo root, just the nonce:
+1. In the Safe, open the pending transaction and note its **nonce** (confirm the network is **Ethereum**
+   and the Safe address matches). If the nonce isn't one of the rows below (18–25) → **stop & report**.
+   Pinned: [queue](https://app.safe.global/transactions/queue?safe=eth:0x7B96CD54aA750EF83ca90eA487e0bA321707559a).
+2. From the repo root, run:
    ```bash
    bash scripts/signer-verify.sh <NONCE>
    ```
-   It finds this operation's `COORDINATOR-HASH-TABLE.md` in the repo, recomputes the hashes **offline**,
-   and prints exactly what you should see. No network, no hash to paste.
-3. **`PASS` + exit `0`?** → continue. Anything else → **stop & report** (see the box above).
-4. **Confirm your Safe UI + Ledger match the card.** Open the pending tx → **Advanced details** and check
-   `to` / `operation` / `data` / `safeTxHash` equal the card's. When you click **Sign**, your **Ledger**
-   shows a **Domain hash + Message hash** (not the safeTxHash) — confirm both equal the card's
-   `domainHash:` / `messageHash:`. Compare whole 64-character values, not just the ends.
-5. **All match → sign.** Any mismatch → **reject on the device** and report. (Clicking *Sign* only brings up
-   the hashes; rejecting on the Ledger signs nothing — safe to inspect.)
+   It finds this operation's `COORDINATOR-HASH-TABLE.md` in the repo, recomputes the hashes **offline**, and
+   prints exactly what that transaction must contain.
+3. **`PASS` + exit `0`?** → continue. Anything else → **stop & report**.
+4. **Confirm the transaction matches the card:**
+   - Safe UI → **Advanced details**: `to` / `operation` / `data` / `safeTxHash` equal the card's.
+   - Your signing device displays a **Domain hash + Message hash** (not the safeTxHash) — both equal the
+     card's `domainHash:` / `messageHash:`.
+
+   Compare whole 64-character values, not just the ends.
+5. **Everything matches → it's the expected transaction.** Any mismatch → it isn't; don't approve it, and report.
 
 Every tx this round is a **CALL to the timelock** `0xb3999B2D…`. The script recomputes each hash from the
 payload in the repo and checks it against the published `safeTxHash`, so a tampered payload prints `REJECT`
-— **trust a `REJECT`.**
+— **trust a `REJECT`.** The card also prints reference lines (`operationId` / `new impl` / `multicall`) —
+informational, already bound by the `safeTxHash`; you don't need to chase them.
 
-## Table  *(one row = one nonce; never sign a nonce not listed here)*
+## Table  *(one row = one nonce; never approve a nonce not listed here)*
 
 | nonce | to | op | action | expected safeTxHash |
 | --- | --- | --- | --- | --- |
@@ -50,31 +52,20 @@ payload in the repo and checks it against the published `safeTxHash`, so a tampe
 | 24 | `0xb3999B2D…` timelock | CALL | schedule grant rate-limiter (role 5) → `0x4b46ea82…` on cosmoshub-0 escrow `0x0fA75C2c…` | `0x2a0bca9f92e06eab69c72333e9285f443f6a6359372746d634bbd9aef3ca6c58` |
 | 25 | `0xb3999B2D…` timelock | CALL | schedule grant rate-limiter (role 5) → `0x4b46ea82…` on ledger-mainnet-1 escrow `0xC76944B0…` | `0x1335e17eb41acdcbb4b7981323896581f9caa175ee05bd9f24b74fa8674eb8c7` |
 
-The card also prints reference lines (`operationId` / `new impl` / `multicall`) — informational, already
-bound by the `safeTxHash`; you don't need to chase them.
-
-## Setup (once, then ignore)
+## Setup (once)
 
 - **Check out the repo** on the branch the coordinator gives you, then run from its root:
   ```bash
   git clone <repo-url> && cd eureka-ops && git checkout <branch-the-coordinator-named>
   ```
-  Checking out that branch is how you trust the script + table — git verifies the file contents for you,
-  so there's nothing to download or sha256 separately.
-- **Install Foundry (for `cast`):** `curl -L https://foundry.paradigm.xyz | bash`, then **open a new
-  terminal** (or `source ~/.bashrc`), run `foundryup`, and check `cast --version`. `cast` is the only tool
-  the verifier needs — no `jq`, no network.
-- **Ledger:** enable **Blind signing** (older firmware: "Allow contract data") and update the app, or it
-  can't show the hashes. Confirm your address is a Safe owner (Safe UI → Settings → Owners).
-- **Windows:** do everything in **WSL/Ubuntu** (`wsl --install`) and **clone the repo inside WSL** (your
-  Linux home, not `/mnt/c`) so the scripts stay runnable.
+  Checking out that branch is how you trust the script + table — git verifies the file contents, so
+  there's nothing to download or sha256 separately.
+- **Install Foundry (for `cast`):** `curl -L https://foundry.paradigm.xyz | bash`, then open a new terminal,
+  run `foundryup`, and check `cast --version`. `cast` is the only tool the validator needs.
 
-## If the script can't find the table
-
-It expects to run from inside the checked-out repo. From elsewhere, point it at the file:
+If the script can't find the table (you're running it outside the repo), point it at the file:
 `bash scripts/signer-verify.sh <NONCE> --table runbooks/operations/2026-06-18-upgrade-v2-to-v3/COORDINATOR-HASH-TABLE.md`.
 
 ---
-*This round is the 8 schedules only. The atomic **execute** (~3 days later) and the **customizer**
-registration are separate rounds with their own instructions — nothing to do for them now.*
-*Coordinator: authoritative per-nonce hashes + payloads in [`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*
+*This validates the 8 schedule transactions only (nonces 18–25). Authoritative per-nonce hashes + payloads:
+[`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*
