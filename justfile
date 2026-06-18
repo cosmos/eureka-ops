@@ -36,7 +36,7 @@ new-operation operation environment chain base="main":
     # NOTE: this seeds the operation folder with a POINT-IN-TIME snapshot of the procedure. If the
     # canonical runbooks/{{operation}}.md is revised during a long-running operation, this copy goes
     # stale — keep the canonical file authoritative and have $dir/RUNBOOK.md defer to it (see
-    # runbooks/operations/2026-06-15-upgrade-v2-to-v3/RUNBOOK.md for the pattern).
+    # runbooks/operations/2026-06-18-upgrade-v2-to-v3/RUNBOOK.md for the pattern).
     cp runbooks/{{operation}}.md $dir/RUNBOOK.md
     git add $dir/RUNBOOK.md
 

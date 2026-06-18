@@ -2,7 +2,7 @@
 
 *For the reviewers who produced Review A (6-agent), Review B (33-agent), and the two `READINESS-REVIEW.md`
 feedbacks. Maps every finding to its resolution, the commit that made it, and a concrete way to re-validate.*
-*Branch `operations/2026-06-15-upgrade-v2-to-v3`. Date 2026-06-17.*
+*Branch `operations/2026-06-18-upgrade-v2-to-v3`. Date 2026-06-17.*
 
 ---
 

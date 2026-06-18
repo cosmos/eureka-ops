@@ -9,7 +9,7 @@ Durable record of the v2→v3 core upgrade (per-contract `AccessControl` → sha
 - **Mainnet cutover runsheet:** [`CUTOVER-RUNSHEET.md`](CUTOVER-RUNSHEET.md) — pre-filled, ordered
   execution sheet for the 72 h window (mainnet values + decisions inlined).
 - **Status:** executed end-to-end on **Sepolia testnet (chain `11155111`)**; **mainnet (chain `1`) not yet executed.**
-- **Branch:** `operations/2026-06-15-upgrade-v2-to-v3`.
+- **Branch:** `operations/2026-06-18-upgrade-v2-to-v3`.
 
 The goal was two coupled changes executed in a single timelock/operation window, cut over
 **atomically** so the chain never settles in a mixed v2/v3 state:

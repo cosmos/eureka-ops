@@ -130,7 +130,7 @@ Same branch, once per client moving to v6.1.
 > its height is frozen, and the prod relayer config has no module for it, so it is not a live relayed
 > channel. **The migrate set is `cosmoshub-0` + `ledger-mainnet-1` only** — use exactly those two
 > everywhere the client list appears (rehearsal, expected-count, step-7 execute args). See
-> [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md).
+> [`runbooks/operations/2026-06-18-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-18-upgrade-v2-to-v3/RECORD.md).
 
 **a. Trusted state** — regenerate from the proof-api (version-independent, so the existing proof-api is fine). Prompts for the client ID:
 
@@ -238,7 +238,7 @@ Capture each grant's `execute` blob **at the same time, with byte-identical prom
 
 ### 7. Execute the upgrade atomically (after the delay)
 
-**Before running:** confirm the timelock delay has elapsed and the relayer lockstep gate (step 5e) passed. **Snapshot the current v2 `RATE_LIMITER_ROLE` holders on each live `Escrow` now** — you need them to re-grant in step 10, and this execute flips escrows to the AccessManager authority. The escrows are plain (non-enumerable) `AccessControl`, so run **`scripts/discover-v2-roles.py`** (Etherscan logs API, no 50k-block cap) — it reconstructs and `hasRole`-confirms every live v2 holder of *all* roles and reconciles them against the deployment JSON, so it doubles as the completeness check for the whole grant set (rate limiters, plus any role missing from / extra in the JSON). See `runbooks/post-upgrade-role-testing.md`. If none are configured, step 10 is a no-op. Halt packet relaying around the execute as defense-in-depth where possible. **On mainnet there is no clean halt** — the prod relayer stays on the *old* build through the whole window and is *upgraded* to the new build right after the execute lands (a brief restart, not a 72 h outage); cutting it earlier would break both channels for the entire delay. See [`operations/2026-06-15-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md`](operations/2026-06-15-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md) steps 5e/5f/8a.
+**Before running:** confirm the timelock delay has elapsed and the relayer lockstep gate (step 5e) passed. **Snapshot the current v2 `RATE_LIMITER_ROLE` holders on each live `Escrow` now** — you need them to re-grant in step 10, and this execute flips escrows to the AccessManager authority. The escrows are plain (non-enumerable) `AccessControl`, so run **`scripts/discover-v2-roles.py`** (Etherscan logs API, no 50k-block cap) — it reconstructs and `hasRole`-confirms every live v2 holder of *all* roles and reconciles them against the deployment JSON, so it doubles as the completeness check for the whole grant set (rate limiters, plus any role missing from / extra in the JSON). See `runbooks/post-upgrade-role-testing.md`. If none are configured, step 10 is a no-op. Halt packet relaying around the execute as defense-in-depth where possible. **On mainnet there is no clean halt** — the prod relayer stays on the *old* build through the whole window and is *upgraded* to the new build right after the execute lands (a brief restart, not a 72 h outage); cutting it earlier would break both channels for the entire delay. See [`operations/2026-06-18-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md`](operations/2026-06-18-upgrade-v2-to-v3/CUTOVER-RUNSHEET.md) steps 5e/5f/8a.
 
 ```bash
 just execute-v3-upgrade-multisend <execute_safe_nonce> <client_id_1> <client_id_2> ...
@@ -341,7 +341,7 @@ just timelock-grant-rate-limiter-role schedule
 just timelock-grant-rate-limiter-role execute <safe_nonce>
 ```
 
-> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none) — confirmed on-chain via `hasRole`. **Re-grant `0x4b46ea82…` ONLY — `0x64259f72…` is dropped (decided 2026-06-18; see RECORD decision #9).** These are **not** in the deployment JSON, so this step is **not** a no-op on mainnet (it was on testnet). The authoritative, maintained copy of this snapshot lives in [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md); re-confirm with `discover-v2-roles.py` immediately before cutover (holders can change).
+> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none) — confirmed on-chain via `hasRole`. **Re-grant `0x4b46ea82…` ONLY — `0x64259f72…` is dropped (decided 2026-06-18; see RECORD decision #9).** These are **not** in the deployment JSON, so this step is **not** a no-op on mainnet (it was on testnet). The authoritative, maintained copy of this snapshot lives in [`runbooks/operations/2026-06-18-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-18-upgrade-v2-to-v3/RECORD.md); re-confirm with `discover-v2-roles.py` immediately before cutover (holders can change).
 
 `RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured. `verify-deployment` does not assert these grants — confirm them manually.
 

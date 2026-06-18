@@ -1,7 +1,7 @@
 # Mainnet v2→v3 + SP1 v6.1 upgrade — readiness review & change plan
 
 *Standalone document. Written so a reviewer with no prior context can read it top to bottom.*
-*Date: 2026-06-17. Branch: `operations/2026-06-15-upgrade-v2-to-v3` (PR #19).*
+*Date: 2026-06-17. Branch: `operations/2026-06-18-upgrade-v2-to-v3` (PR #19).*
 
 ---
 

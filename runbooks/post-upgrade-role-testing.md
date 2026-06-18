@@ -107,7 +107,7 @@ migration (the escrow beacon upgrade flips all escrow proxies regardless) — so
 > `.accessManagerRoles`, which the deploy rewrites) in `deployments/mainnet/1.json` with the re-granted
 > holders so Part B matches exactly; otherwise the
 > tool flags the live role-5 holders as `UNEXPECTED` and exits non-zero. See
-> [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md)
+> [`runbooks/operations/2026-06-18-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-18-upgrade-v2-to-v3/RECORD.md)
 > for the snapshot.
 
 > **Mainnet prerequisites for `validate-v3-roles.py`:** the script exits early while
@@ -250,7 +250,7 @@ is proven by:
 
 1. The v2→v3 upgrade itself (the ICS20/ICS26 `upgradeToAndCall` + escrow/ibcERC20 beacon upgrades
    already executed via the timelock — see
-   [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md)).
+   [`runbooks/operations/2026-06-18-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-18-upgrade-v2-to-v3/RECORD.md)).
 2. The SP1 `migrateClient` ops that landed during the upgrade.
 3. The shadow-fork rehearsal (`just shadow-v2-to-v3-sepolia-with-sp1`), which runs the whole admin
    upgrade path end-to-end against a fork.
