@@ -2,8 +2,8 @@
 
 Generated from source at proposal time (2026-06-18). Every `safeTxHash` below was
 **independently confirmed** via the gov Safe's on-chain `getTransactionHash(...)` for that
-nonce, and re-confirmed present in the tx-service queue. Signers MUST machine-check the
-hash they sign (`signer-verify.sh 1 <safe> <nonce> --expect <hash>`) against this table.
+nonce, and re-confirmed present in the tx-service queue. Signers machine-check the hash they
+sign by running `bash scripts/signer-verify.sh <nonce>` from the repo root (it reads the payload row below).
 
 Timelock (`to` of every schedule): `0xb3999B2D30dD8c9faEcE5A8a503fAe42b8b1b614` · delay 259200 s (72 h)
 AccessManager: `0x3fa3f45acE1645614c80679AeEcE0A82A93c77Ec` · RATE_LIMITER_ROLE = 5 · holder re-granted: `0x4b46ea82D80825CA5640301f47C035942e6D9A46` (0x64259f72 DROPPED)

@@ -42,6 +42,7 @@ sel_name() {
     0x01d5062a) echo "TimelockController.schedule";; 0x4f1ef286) echo "upgradeToAndCall";;
     0x5f516889) echo "addIBCApp";; 0xac9650d8) echo "multicall";;
     0xcce0b265) echo "migrateClient";; 0x25c471a0) echo "grantRole";;
+    0xaaa2c343) echo "upgradeEscrowTo";; 0x06ab20bc) echo "upgradeIBCERC20To";;
     "0x"|"") echo "(no calldata)";; *) echo "(unknown selector $1)";;
   esac
 }
@@ -69,6 +70,8 @@ decode_inner() {
       echo "    operationId:    $opid"
       case "$(lc "$isel")" in
         0x4f1ef286) local ni; ni="$(cast decode-calldata 'upgradeToAndCall(address,bytes)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    new impl:       ${ni:-?}";;
+        0xaaa2c343) local ne; ne="$(cast decode-calldata 'upgradeEscrowTo(address)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    new impl:       ${ne:-?}  (escrow beacon)";;
+        0x06ab20bc) local nb; nb="$(cast decode-calldata 'upgradeIBCERC20To(address)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    new impl:       ${nb:-?}  (ibcerc20 beacon)";;
         0x25c471a0) local rid; rid="$(cast decode-calldata 'grantRole(uint64,address,uint32)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    grants role:    ${rid:-?}  (RATE_LIMITER is 5)"; if [ "${rid:-x}" = 0 ]; then rej "scheduled grantRole targets ADMIN_ROLE (0) — NOT part of this upgrade"; fi;;
         0xac9650d8) echo "    (multicall — rate-limiter grant: role 5 + escrow; bound by the safeTxHash)";;
       esac
