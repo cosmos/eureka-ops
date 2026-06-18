@@ -6,23 +6,23 @@ How to **validate** the 8 scheduling transactions (nonces **18–25**) on the go
 > 1. the command ends with a single `PASS` and `echo $?` prints `0`; **and**
 > 2. every value it prints matches what the transaction shows (Safe UI → Advanced details, and the hashes your signing device displays).
 >
-> Any `REJECT`, a non-zero exit, a `to`/`operation`/`data`/hash that doesn't match, or **more than one transaction at the nonce** → it does **not** validate. Don't approve it — screenshot it, report over the trusted channel, and wait for an all-clear.
+> Any `REJECT`, a non-zero exit, a `to`/`operation`/`data`/hash that doesn't match, or **more than one transaction at the nonce** → it does **not** validate. Don't approve it.
 
 ## Validate each transaction
 
-1. In the Safe, open the pending transaction and note its **nonce** (confirm the network is **Ethereum** and the Safe address matches). If the nonce isn't one of the rows below (18–25) → **stop & report**. Pinned: [queue](https://app.safe.global/transactions/queue?safe=eth:0x7B96CD54aA750EF83ca90eA487e0bA321707559a).
+1. In the Safe, open the pending transaction and note its **nonce** (confirm the network is **Ethereum** and the Safe address matches). If the nonce isn't one of the rows below (18–25) → **stop**. Pinned: [queue](https://app.safe.global/transactions/queue?safe=eth:0x7B96CD54aA750EF83ca90eA487e0bA321707559a).
 2. From the repo root, run:
    ```bash
    bash scripts/signer-verify.sh <NONCE>
    ```
    It finds this operation's `COORDINATOR-HASH-TABLE.md` in the repo, recomputes the hashes **offline**, and prints exactly what that transaction must contain.
-3. **`PASS` + exit `0`?** → continue. Anything else → **stop & report**.
+3. **`PASS` + exit `0`?** → continue. Anything else → **stop**.
 4. **Confirm the transaction matches the card:**
    - Safe UI → **Advanced details**: `to` / `operation` / `data` / `safeTxHash` equal the card's.
    - Your signing device displays a **Domain hash + Message hash** (not the safeTxHash) — both equal the card's `domainHash:` / `messageHash:`.
 
    Compare whole 64-character values, not just the ends.
-5. **Everything matches → it's the expected transaction.** Any mismatch → it isn't; don't approve it, and report.
+5. **Everything matches → it's the expected transaction.** Any mismatch → it isn't; don't approve it.
 
 Every tx this round is a **CALL to the timelock** `0xb3999B2D…`. The script recomputes each hash from the payload in the repo and checks it against the published `safeTxHash`, so a tampered payload prints `REJECT` — **trust a `REJECT`.** The card also prints reference lines (`operationId` / `new impl` / `multicall`) — informational, already bound by the `safeTxHash`; you don't need to chase them.
 
@@ -43,7 +43,7 @@ Every tx this round is a **CALL to the timelock** `0xb3999B2D…`. The script re
 
 - **Check out the repo** on the branch the coordinator gives you, then run from its root:
   ```bash
-  git clone <repo-url> && cd eureka-ops && git checkout <branch-the-coordinator-named>
+  git clone git@github.com:cosmos/eureka-ops.git && cd eureka-ops && git checkout operations/2026-06-18-upgrade-v2-to-v3
   ```
   Checking out that branch is how you trust the script + table — git verifies the file contents, so there's nothing to download or sha256 separately.
 - **Install Foundry (for `cast`):** `curl -L https://foundry.paradigm.xyz | bash`, then open a new terminal, run `foundryup`, and check `cast --version`. `cast` is the only tool the validator needs.
