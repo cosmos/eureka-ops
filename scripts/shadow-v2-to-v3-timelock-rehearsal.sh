@@ -12,7 +12,8 @@ set -euo pipefail
 #      revert.
 #   5. Executes the whole upgrade (both proxy upgrades + beacon upgrades + SP1 migrations) as ONE atomic Safe
 #      MultiSend transaction driven through the REAL Safe (execTransaction, pre-approved-hash signatures), then
-#      registers ICS27, initializes escrows, and verifies.
+#      registers ICS27 via the customizer's REAL authority (a 2-of-N Safe execTransaction CALL on a mainnet
+#      fork — the production step-8 path; an EOA broadcast on testnet), initializes escrows, and verifies.
 #
 # This validates the timelock schedule/execute/ordering and the recipe-generated calldata end-to-end on the real
 # v2 contracts — including the production atomic Safe MultiSend execute — the part the direct-broadcast rehearsal
@@ -469,6 +470,84 @@ execute_atomic() {
   [ "$status" = "0x1" ] || [ "$status" = "1" ] || { echo "FAILED: execTransaction receipt status != success ($status)" >&2; exit 1; }
 }
 
+# Drive an arbitrary Safe transaction through the REAL Safe via execTransaction, authorised by on-chain
+# approveHash from the first `threshold` owners + a prevalidated-signature (v=1) blob — no private keys, fork
+# only. Same signature machinery as execute_atomic, but generic over (safe,to,value,data,operation) so it can
+# also drive the 2-of-5 customizer-Safe `addIBCApp` CALL. execute_atomic keeps its own inline copy unchanged
+# (it is the proven atomic-execute path); this is purely additive.
+safe_exec_tx() {
+  local sx_safe="$1" sx_to="$2" sx_value="$3" sx_data="$4" sx_operation="$5" sx_label="$6"
+  local threshold nonce tx_hash owners
+  threshold="$(cast call "$sx_safe" "getThreshold()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
+  nonce="$(cast call "$sx_safe" "nonce()(uint256)" --rpc-url "$fork_rpc" | awk '{print $1}')"
+  tx_hash="$(cast call "$sx_safe" \
+    "getTransactionHash(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,uint256)(bytes32)" \
+    "$sx_to" "$sx_value" "$sx_data" "$sx_operation" 0 0 0 "$zero_addr" "$zero_addr" "$nonce" --rpc-url "$fork_rpc")"
+  echo "    $sx_label: safe $sx_safe (threshold $threshold, nonce $nonce)"
+  echo "    safe tx hash:        $tx_hash"
+  owners="$(cast call "$sx_safe" "getOwners()(address[])" --rpc-url "$fork_rpc" \
+    | tr -d '[]' | tr ',' '\n' | tr -d ' ' | tr 'A-Z' 'a-z' | grep -E '^0x[0-9a-f]{40}$')"
+  local approvers=() count=0 owner
+  while IFS= read -r owner; do
+    [ -n "$owner" ] || continue
+    [ "$count" -ge "$threshold" ] && break
+    cast rpc --rpc-url "$fork_rpc" anvil_setBalance "$owner" "$balance" >/dev/null
+    echo "    approveHash by owner $owner"
+    if ! cast send "$sx_safe" "approveHash(bytes32)" "$tx_hash" --from "$owner" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
+      echo "FAILED: approveHash by $owner ($sx_label)" >&2; exit 1
+    fi
+    approvers+=("$owner"); count=$((count + 1))
+  done <<< "$owners"
+  [ "$count" -ge "$threshold" ] || { echo "Safe $sx_safe has fewer owners ($count) than threshold ($threshold)" >&2; exit 1; }
+  # checkNSignatures wants owners strictly ascending → sort approvers; per-approver prevalidated sig r=owner, s=0, v=1.
+  local zeros="0000000000000000000000000000000000000000000000000000000000000000"
+  local sigs="0x" exec_sender="" r
+  while IFS= read -r owner; do
+    [ -n "$owner" ] || continue
+    r="$(cast abi-encode "f(address)" "$owner")"; r="${r#0x}"
+    sigs="${sigs}${r}${zeros}01"
+    [ -z "$exec_sender" ] && exec_sender="$owner"
+  done < <(printf '%s\n' "${approvers[@]}" | sort)
+  echo "    execTransaction ($sx_label, operation=$sx_operation) from $exec_sender"
+  if ! cast send "$sx_safe" \
+      "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)" \
+      "$sx_to" "$sx_value" "$sx_data" "$sx_operation" 0 0 0 "$zero_addr" "$zero_addr" "$sigs" \
+      --from "$exec_sender" --unlocked --rpc-url "$fork_rpc" >/dev/null; then
+    echo "FAILED: execTransaction reverted ($sx_label)" >&2; exit 1
+  fi
+  echo "    ok: $sx_label executed via Safe execTransaction"
+}
+
+# Register ICS27GMP via the customizer's REAL authority path. addIBCApp is gated by ID_CUSTOMIZER_ROLE; on
+# mainnet that holder (0x4b46ea82…) is a 2-of-5 Safe, so the production path is a Safe execTransaction CALL —
+# NOT the forge single-sender broadcast (`register-ics27-gmp`), which cannot be used as-is. So: if the customizer
+# has code (a Safe), drive the real 2-of-5 execTransaction; if it's an EOA (testnet Ledger), keep the
+# impersonated single-sender broadcast. This makes the rehearsal cover the exact mainnet step-8 multisig path.
+register_ics27() {
+  local ics26 ics27 port="gmpport" data got code
+  ics26="$(jq -re '.ics26Router.proxy' "$shadow_file")"
+  ics27="$(jq -re '.ics27Gmp.proxy' "$shadow_file")"
+  [ -n "$ics27" ] && [ "$ics27" != "$zero_addr" ] || { echo "no .ics27Gmp.proxy in $shadow_file" >&2; exit 1; }
+  data="$(cast calldata 'addIBCApp(string,address)' "$port" "$ics27")"
+  code="$(cast code "$id_customizer" --rpc-url "$fork_rpc")"
+  if [ -n "$code" ] && [ "$code" != "0x" ]; then
+    echo "    customizer $id_customizer is a Safe → driving addIBCApp via the REAL execTransaction (CALL)"
+    safe_exec_tx "$id_customizer" "$ics26" 0 "$data" 0 "register ICS27GMP (addIBCApp, 2-of-N Safe CALL)"
+  else
+    echo "    customizer $id_customizer is an EOA → single-sender broadcast"
+    forge script script/RegisterICS27GMP.sol:RegisterICS27GMP \
+      --rpc-url "$fork_rpc" --broadcast --unlocked --sender "$id_customizer" -vvv
+    # RegisterICS27GMP broadcasts to a tracked path; restore it to its committed state (fork-only data).
+    git checkout -q -- broadcast/RegisterICS27GMP.sol 2>/dev/null || true
+    git clean -fdq broadcast/RegisterICS27GMP.sol 2>/dev/null || true
+  fi
+  # Assert the registration landed (clearer signal than the later VerifyDeployment revert).
+  got="$(cast call "$ics26" "getIBCApp(string)(address)" "$port" --rpc-url "$fork_rpc")"
+  [ "$(printf '%s' "$got" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$ics27" | tr 'A-Z' 'a-z')" ] \
+    || { echo "FAIL: getIBCApp($port)=$got, expected $ics27 — addIBCApp did not land" >&2; exit 1; }
+  echo "    ok: getIBCApp($port) == $ics27"
+}
+
 # ---------------------------------------------------------------------------
 # 2. Schedule every timelocked operation.
 # ---------------------------------------------------------------------------
@@ -536,12 +615,9 @@ fi
 # 5. Register ICS27 (ID customizer), initialize escrows (permissionless), verify.
 # ---------------------------------------------------------------------------
 echo "==> Registering ICS27GMP (as ID customizer $id_customizer)"
-forge script script/RegisterICS27GMP.sol:RegisterICS27GMP \
-  --rpc-url "$fork_rpc" --broadcast --unlocked --sender "$id_customizer" -vvv
-# RegisterICS27GMP broadcasts to a tracked path (.gitignore only excludes ShadowFork* broadcasts). On a fork this
-# is fork-only data, so restore that path to its committed state rather than leaving fork addresses for `git add`.
-git checkout -q -- broadcast/RegisterICS27GMP.sol 2>/dev/null || true
-git clean -fdq broadcast/RegisterICS27GMP.sol 2>/dev/null || true
+# On a mainnet fork the customizer is a 2-of-5 Safe → this drives the REAL execTransaction CALL (production
+# step 8); on a testnet fork it's an EOA → impersonated single-sender broadcast. See register_ics27.
+register_ics27
 
 echo "==> Initializing known escrows"
 while IFS= read -r cid; do

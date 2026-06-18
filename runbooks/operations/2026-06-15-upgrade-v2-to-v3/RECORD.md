@@ -203,9 +203,10 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
    in-scope change** alongside the v2→v3 core and the SP1 v6.1 migration. It is **net-new on-chain surface**,
    but **inert without a counterparty channel**: `ICS27GMP`'s packet callbacks are `onlyRouter` + inbound-only,
    so with nothing wired to `gmpport` no packets route and no accounts are created. Reviewed sound; the
-   net-new message-passing surface is **accepted** on that basis. Caveat carried into the runsheet T-minus:
-   the real **2-of-5 `addIBCApp` Safe CALL** is to be exercised on a mainnet fork before the window (the prior
-   rehearsal registered via an impersonated single-sender broadcast, not the real multisig `execTransaction`).
+   net-new message-passing surface is **accepted** on that basis. The real **2-of-5 `addIBCApp` Safe CALL**
+   is now exercised on a mainnet fork by the timelock rehearsal (2026-06-18): `execTransaction` from the
+   customizer Safe `0x4b46ea82…` (threshold 2) lands, `getIBCApp(gmpport)` == the ICS27 proxy, and
+   `VerifyDeployment` passes — replacing the prior impersonated single-sender broadcast.
 
 | Thing | Address / value |
 | --- | --- |

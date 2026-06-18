@@ -56,8 +56,11 @@ export ETHERSCAN_API_KEY=<key>      # required by discover-v2-roles.py (the fail
 - [ ] **Shadow-fork dress rehearsal green**, incl. the **exact 10-op fold** (4 core + 2 migrations + 4
       rate-limiter grants) via `RL_GRANTS="cosmoshub-0:0x4b46ea82…,cosmoshub-0:0x64259f72…,ledger-mainnet-1:0x4b46ea82…,ledger-mainnet-1:0x64259f72…"
       SP1_CLIENT_IDS=cosmoshub-0,ledger-mainnet-1 bash scripts/shadow-v2-to-v3-timelock-rehearsal.sh 1 mainnet shadow-mainnet <fork>`,
-      plus the staged-v6.1 variant (`SHADOW_FORK_PRESERVE_DEPLOYMENT=1`). *(Rehearsed 2026-06-17: the
-      10-op bundle executes for ≈ 616k gas (~1 % of the block limit); all 4 grants land.)*
+      plus the staged-v6.1 variant (`SHADOW_FORK_PRESERVE_DEPLOYMENT=1`). The same rehearsal now also drives
+      step-8 `addIBCApp` through the **real 2-of-5 customizer Safe** `execTransaction` on a mainnet fork (not an
+      EOA broadcast) — the production registration path. *(Rehearsed 2026-06-17: 10-op bundle ≈ 616k gas
+      (~1 % of the block limit), all 4 grants land. 2026-06-18: the 2-of-5 customizer-Safe `addIBCApp` lands —
+      `getIBCApp(gmpport)` == the ICS27 proxy and `VerifyDeployment` passes.)*
 - [ ] **SP1 go/no-go** on the `sp1-programs` tag (final `v2.0.0` at the `rc.2` commit).
 - [ ] **Relayer owners + the 2-of-5 customizer Safe signers + the 4-of-7 governance signers** lined up.
 - [ ] **Ledger** confirmed: `cast wallet address --ledger --mnemonic-index 1` == a governance-Safe
