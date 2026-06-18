@@ -103,6 +103,28 @@ if [ -n "$write_env" ]; then
   ucm="$(jq -r .ucAndMembershipVkey <<<"$vkeys_json")"
   mis="$(jq -r .misbehaviourVkey <<<"$vkeys_json")"
 
+  # Mainnet guard: the v6.1 vkeys for this upgrade are FIXED and KNOWN — validated on testnet and recorded in
+  # the operation RECORD (sp1-programs v2.0.0, cut at the v2.0.0-rc.2 commit). Assert the computed set matches
+  # the expected constants before writing to a mainnet (chain 1) deployment, so a wrong ELF/version/toolchain
+  # can't silently write bad vkeys (every migrated client's proofs would then revert at cutover). An intentional
+  # future mainnet vkey change must opt out with ALLOW_VKEY_MISMATCH=1.
+  if [ "$write_chain" = "1" ]; then
+    exp_uc="0x00d38536f65ab10e7eff0895b1b9f7cf12f89691631742bb487fe090027e0e6d"
+    exp_mem="0x000bd8ec43ea65b85c87eb57ace44692c3292ff297e01f29542b9fb476ed3e4f"
+    exp_ucm="0x009fe47dbd3934f92417fbe4f17e79fe89417d61a724f66fadbc361b475dc091"
+    exp_mis="0x0010008da4267c2e85d02616e853379e3c937c03a271b5b005f479cff09ccfcb"
+    mismatch=0
+    [ "$(printf '%s' "$uc"  | tr 'A-Z' 'a-z')" = "$exp_uc"  ] || { echo "MAINNET VKEY MISMATCH updateClient:    got $uc  expected $exp_uc"  >&2; mismatch=1; }
+    [ "$(printf '%s' "$mem" | tr 'A-Z' 'a-z')" = "$exp_mem" ] || { echo "MAINNET VKEY MISMATCH membership:      got $mem expected $exp_mem" >&2; mismatch=1; }
+    [ "$(printf '%s' "$ucm" | tr 'A-Z' 'a-z')" = "$exp_ucm" ] || { echo "MAINNET VKEY MISMATCH ucAndMembership: got $ucm expected $exp_ucm" >&2; mismatch=1; }
+    [ "$(printf '%s' "$mis" | tr 'A-Z' 'a-z')" = "$exp_mis" ] || { echo "MAINNET VKEY MISMATCH misbehaviour:    got $mis expected $exp_mis" >&2; mismatch=1; }
+    if [ "$mismatch" = 1 ]; then
+      echo "Refusing to write mainnet vkeys that don't match the validated v6.1 set (sp1-programs v2.0.0)." >&2
+      echo "Check --version and the SP1 toolchain. Override only if this is an intentional change: ALLOW_VKEY_MISMATCH=1." >&2
+      [ "${ALLOW_VKEY_MISMATCH:-}" = "1" ] || exit 1
+    fi
+  fi
+
   for cid in "${client_ids[@]}"; do
     tmp="$(mktemp)"
     jq --arg cid "$cid" --arg uc "$uc" --arg mem "$mem" --arg ucm "$ucm" --arg mis "$mis" '

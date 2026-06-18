@@ -84,6 +84,13 @@ export ETHERSCAN_API_KEY=<key>      # required by discover-v2-roles.py (the fail
       proof-api to produce a real `updateClient` proof and **verify it lands against a fork-migrated mainnet
       client** (the staged-v6.1 fork), and **record the prover SP1-SDK version** so prod runs the identical
       prover. *(Single operator, no backup ⇒ the definitive test, not just a testnet witness.)*
+- [ ] **Prod proof-api `/dev/shm` (the post-cut prover footgun).** The new build proves `cosmoshub-4` through a
+      `/dev/shm` trace ring; the 64 MiB k8s default fails as `Program simulation failed` (RAM idle, no
+      OOMKills — easy to misread). Confirm [ibc-manifests#91](https://github.com/skip-mev/ibc-manifests/pull/91)
+      (≥2 GiB RAM-backed `/dev/shm`) is **merged and Argo-synced to prod**, and that the prod relayer pod
+      actually has it (needs a pod restart to take effect): `kubectl -n ibc exec ‹prod relayer pod› -- df -h
+      /dev/shm` shows **≥2.0G, not 64M**. The new-build proof-api used for C4 (above) and step 5e should carry
+      the same mount. Full write-up: [`../../../PROOF_API_FAILURE_MODE.md`](../../../PROOF_API_FAILURE_MODE.md).
 - [x] **Authority & roles (decided):** single **authority** = the operator (go/no-go **and** abort); single
       **proposer** (Ledger idx 1) + single **coordinator**; **single-point roles accepted, no backups** (C7/C12).
       The 4-of-7 governance + 2-of-5 customizer Safes provide signing breadth, not operator redundancy.
@@ -237,20 +244,36 @@ EXTRA_TIMELOCK_OPS='…' LEDGER=1 MNEMONIC_INDEX=1 \
 
 ## Phase D — Post-cutover
 
-> **Order:** execute → **9** (escrow init) → **8a** (relayer upgrade) → **11** (verify) → **13** (validate).
-> Step **8** (register ICS27GMP) is independent — any time after the execute. *(8a is numbered for the
-> relayer "cut"; it runs after 9 so transfers fully resume.)*
+> **Order:** execute → **9** (escrow init) → **8** (register ICS27GMP) → **11** (verify) → **8a** (relayer
+> upgrade) → **13** (validate). **Verify (11) gates the relayer roll (8a):** if verify fails, do **not** roll
+> the relayer — it stays on the old build (see C10). `verify-deployment` reverts unless ICS27GMP is
+> registered, so **8 must precede 11**. *(8a runs last among the cut steps so the relayer only moves to the
+> new build once the on-chain end-state is confirmed good.)*
 
-**8a. Upgrade the prod relayer to the new build — right after the execute lands** (and after step 9 escrow-init,
-which is permissionless + quick, so transfers fully resume). This is the "cut": bump `v1.2.0`→`v2.0.0` (latest
-sp1-programs / v6.1) in `ibc-manifests/relayer-api/config/prod/relayer.json` and roll the relayer. It restarts
-(it does not cleanly stop), so the **relaying gap = execute → relayer up** (minutes). The migrated clients now
-hold the v6.1 vkeys, so the new-build proofs match. Confirm against **prod**:
+**8a. Upgrade the prod relayer to the new build — once verify (11) is green.** This is the "cut": bump
+`v1.2.0`→`v2.0.0` (latest sp1-programs / v6.1) in `ibc-manifests/relayer-api/config/prod/relayer.json` and roll
+the relayer. It restarts (it does not cleanly stop), so the **relaying gap = execute → relayer up** (minutes).
+The migrated clients now hold the v6.1 vkeys, so the new-build proofs match.
+
+⚠️ **`/dev/shm` precondition — re-confirm on the rolled pod.** The new build proves Cosmos Hub through the SP1
+native executor's shared-memory trace ring in `/dev/shm`; the 64 MiB k8s default is exhausted by a single
+`cosmoshub-4` proof and fails as `Program simulation failed`. The fix
+([ibc-manifests#91](https://github.com/skip-mev/ibc-manifests/pull/91), ≥2 GiB RAM-backed `/dev/shm`) is in the
+shared template but takes effect only on a pod restart — so after the roll, confirm the **new** pod actually
+has it (full write-up: [`../../../PROOF_API_FAILURE_MODE.md`](../../../PROOF_API_FAILURE_MODE.md)):
+```bash
+kubectl -n ibc exec ‹prod relayer pod› -- df -h /dev/shm      # must show >= 2.0G, NOT 64M
+```
+Then confirm vkeys against **prod** — but note `check-relayer-vkeys` only checks `CreateClient` calldata, it
+**never runs the prover**, so it passes even on a broken 64 MiB pod:
 ```bash
 PROOF_API_ADDR=‹prod:port› SRC_CHAIN=cosmoshub-4      DST_CHAIN=1 just check-relayer-vkeys --client cosmoshub-0
 PROOF_API_ADDR=‹prod:port› SRC_CHAIN=ledger-mainnet-1 DST_CHAIN=1 just check-relayer-vkeys --client ledger-mainnet-1
 ```
-Watch the catch-up: in-flight packets queued during the restart relay through once it's up.
+**Gate on a real proof, not just the vkey check or the catch-up watch:** confirm a `cosmoshub-0` packet actually
+relays (an `updateClient` / recvPacket landing on-chain) within a few minutes. If proofs don't land and
+`/dev/shm` shows 64M, the pod missed #91 — redeploy/restart it before declaring the cut done. In-flight packets
+queued during the restart relay through once it's up.
 
 **8. Register ICS27GMP** — a **2-of-5 Safe CALL tx from `0x4b46ea82…`** (NOT a broadcast recipe):
 ```bash
@@ -270,14 +293,17 @@ cast send <escrow_to> <data> --rpc-url <rpc> --private-key <funded EOA>   # or -
 cast call <escrow> 'authority()(address)' --rpc-url <rpc>                 # == <accessManager>
 ```
 
-**11. Verify** (relaying already transitioned at 8a; this confirms the end-state):
+**11. Verify — BEFORE the relayer roll (8a); this gates the cut.** Confirm the on-chain end-state is good, and
+only then roll the relayer. A failure here means **do not roll the relayer** — fix forward (C10). Requires
+ICS27GMP already registered (step 8) and escrows initialized (step 9), or `verify-deployment` reverts:
 ```bash
 just verify-deployment
 just check-sp1-verifier
 ```
 
-**13. Validate roles.** `.accessManagerRoles.rateLimiters` + `.rateLimitedEscrows` are **pre-staged** in
-`1.json` (so the validator hard-fails on a miss) — re-confirm they match the grants you actually folded,
+**13. Validate roles.** `rateLimiters` + `rateLimitedEscrows` are **pre-staged top-level** in `1.json` (NOT
+under `.accessManagerRoles`, which `DeployV3AccessManager` rewrites — the validator reads them top-level and
+hard-fails on a miss) — re-confirm they match the grants you actually folded,
 then:
 ```bash
 ETH_RPC=<rpc> FROM_BLOCK=<accessManager-deploy-block> python3 scripts/validate-v3-roles.py mainnet 1
@@ -323,8 +349,9 @@ cancel/stand-down just means **never doing 8a** (relaying keeps working on v2 th
 - **Cannot proceed after the delay elapses:** choose explicitly — (a) stand down (skip 8a; v2 keeps relaying),
   or (b) cancel + reschedule a fresh 72 h round.
 - **Execute SUCCEEDED but step-11 verification FAILS (C10):** you **cannot cancel** — it already landed, the
-  chain is v3, and `cancel()` only works pre-execute. Do **NOT** do 8a (don't upgrade the relayer into a bad
-  state). The fix is **forward-only**: identify the specific defect (a mis-wired role, a missed escrow init, a
+  chain is v3, and `cancel()` only works pre-execute. Because **8a now runs *after* verify**, the relayer is
+  **still on the old build** — simply **do not roll it** (don't upgrade the relayer into a bad state). The fix
+  is **forward-only**: identify the specific defect (a mis-wired role, a missed escrow init, a
   bad migration), and correct it via a **new timelock round** (schedule the corrective op → 72 h → execute) —
   the same machinery, scoped to the fix. Escrow `initializeV2` and role grants are independently re-issuable;
   a bad SP1 migration is re-done with a fresh `migrateClient`. Until corrected, relaying stays on the old

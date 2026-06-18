@@ -160,7 +160,7 @@ for label, addr in targets:
     a = cast("call", addr, "authority()(address)")
     ok(f"{label} authority == AccessManager") if a.lower()==AM.lower() else bad(f"{label} authority={a}")
 
-# D. rate-limiter target wiring. CONDITIONAL gate: escrows listed in `.accessManagerRoles.rateLimitedEscrows`
+# D. rate-limiter target wiring. CONDITIONAL gate: escrows listed in top-level `rateLimitedEscrows` (via cfg())
 # MUST have setRateLimit wired to RATE_LIMITER(5) — a hard FAIL otherwise. This is the per-escrow wiring check
 # that role-5 *membership* (section B) does NOT cover: RATE_LIMITER is manager-wide, so granting the role to
 # every holder leaves membership complete even if an intended escrow was never wired. Escrows NOT in the list

@@ -196,6 +196,16 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
    mainnet-fork rehearsal was subsequently **done** — see "Single-round folding mechanism" below (the exact
    10-op fold, 2026-06-17), and the staged-v6.1 variant (migrating to the v6.1 vkeys + gateway,
    `check-sp1-verifier` green). The testnet rehearsal can no longer run — its JSON is post-upgrade.
+8. **ICS27GMP go/no-go — GO, accepted as deployed-but-inert (2026-06-18).** The v3 bootstrap deploys a
+   greenfield `ICS27GMP` message-passing app + `ICS27Account` beacon (`script/DeployV3AccessManager.sol`
+   lines 40-46 / 91-104) and registers it on the live ICS26Router (step 8 `addIBCApp`, decision #5);
+   `VerifyDeployment` hard-reverts until it is registered, so it is not optional and is a genuine **third
+   in-scope change** alongside the v2→v3 core and the SP1 v6.1 migration. It is **net-new on-chain surface**,
+   but **inert without a counterparty channel**: `ICS27GMP`'s packet callbacks are `onlyRouter` + inbound-only,
+   so with nothing wired to `gmpport` no packets route and no accounts are created. Reviewed sound; the
+   net-new message-passing surface is **accepted** on that basis. Caveat carried into the runsheet T-minus:
+   the real **2-of-5 `addIBCApp` Safe CALL** is to be exercised on a mainnet fork before the window (the prior
+   rehearsal registered via an impersonated single-sender broadcast, not the real multisig `execTransaction`).
 
 | Thing | Address / value |
 | --- | --- |

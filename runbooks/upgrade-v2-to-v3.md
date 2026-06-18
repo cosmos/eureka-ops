@@ -176,10 +176,10 @@ The router still maps the client id to the OLD implementation until the step-7 `
 just deploy-light-client
 ```
 
-**e. Relayer lockstep gate** — the prod proof-api/relayer must be cut over to a build of the same `sp1-programs` release, in lockstep with the migration (step 7). Before scheduling/executing, confirm the running relayer serves the exact programs recorded in the JSON; a mismatch means every migrated client's proofs revert. `SRC_CHAIN` is the proof-api's source (Cosmos) chain id, not the eth-side client id; one call validates all clients (vkeys are program-derived):
+**e. Relayer lockstep gate — verify a NEW-build proof-api; do NOT cut prod here.** The migrated clients' proofs only verify if the relayer's `sp1-programs` build matches the vkeys recorded in the JSON. **Do not touch the prod relayer at this step** — on mainnet it must stay on the *old* build through the whole window and is upgraded only at the cut (step 8a, right after the execute); cutting it earlier breaks both channels for the entire delay (see Context + step 7). Instead, stand up a **separate new-build proof-api** on the target release and confirm *it* serves the exact programs in the JSON, **scoped per migrated client** — an unscoped run FAILs on any still-pre-v6.1 client (e.g. the dropped `client-4`), and `SRC_CHAIN` differs per client. `SRC_CHAIN` is the proof-api's source (Cosmos) chain id, not the eth-side client id:
 
 ```bash
-PROOF_API_ADDR=<host:port> SRC_CHAIN=<cosmos_src_chain> DST_CHAIN=<chain_id> just check-relayer-vkeys
+PROOF_API_ADDR=<new-build host:port> SRC_CHAIN=<cosmos_src_chain> DST_CHAIN=<chain_id> just check-relayer-vkeys --client <client_id>
 ```
 
 > `SRC_CHAIN` is the proof-api's **module identifier** (the `cosmos_to_eth` source whose

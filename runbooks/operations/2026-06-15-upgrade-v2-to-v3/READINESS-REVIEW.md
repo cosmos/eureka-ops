@@ -306,9 +306,9 @@ beacon upgrade recipes would turn the "forgot step 4 → no-op self-upgrade" foo
 
 ### 6.3 Deployment-JSON pre-staging (`deployments/mainnet/1.json`)
 
-- **`.accessManagerRoles.rateLimiters`** — pre-stage the freshly-discovered holders so
+- **`rateLimiters`** (top-level, NOT under `.accessManagerRoles`, which the deploy rewrites) — pre-stage the freshly-discovered holders so
   `validate-v3-roles.py` **hard-fails on an omitted grant** (the live vector). **Closes F3 (membership).**
-- **`.accessManagerRoles.rateLimitedEscrows`** = `["cosmoshub-0","ledger-mainnet-1"]` — a *conditional*
+- **`rateLimitedEscrows`** (top-level) = `["cosmoshub-0","ledger-mainnet-1"]` — a *conditional*
   wiring gate in `validate-v3-roles.py` section D: for listed escrows, assert `setRateLimit` is wired to
   `RATE_LIMITER(5)` (hard fail); others stay informational so testnet stays 32/32. **Closes F3 (wiring).**
 - **`.light_clients[].proofApiSrcChain`** (`cosmoshub-0→cosmoshub-4`, `ledger-mainnet-1→ledger-mainnet-1`)

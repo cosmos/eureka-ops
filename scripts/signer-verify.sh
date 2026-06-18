@@ -70,7 +70,7 @@ decode_inner() {
       echo "    operationId:    $opid   (must match the coordinator table)"
       case "$(lc "$isel")" in
         0x4f1ef286) local ni; ni="$(cast decode-calldata 'upgradeToAndCall(address,bytes)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    new impl:       ${ni:-?}  (must match the step-4 implementation)";;
-        0x25c471a0) local rid; rid="$(cast decode-calldata 'grantRole(uint64,address,uint32)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    grants role:    ${rid:-?}  (RATE_LIMITER is 5)"; [ "${rid:-x}" = 0 ] && rej "scheduled grantRole targets ADMIN_ROLE (0) — NOT part of this upgrade";;
+        0x25c471a0) local rid; rid="$(cast decode-calldata 'grantRole(uint64,address,uint32)' "$inner" 2>/dev/null | sed -n '1p')"; echo "    grants role:    ${rid:-?}  (RATE_LIMITER is 5)"; if [ "${rid:-x}" = 0 ]; then rej "scheduled grantRole targets ADMIN_ROLE (0) — NOT part of this upgrade"; fi;;
         0xac9650d8) echo "    (multicall — for the rate-limiter grant: confirm role 5 + escrow in the table)";;
       esac
       ;;

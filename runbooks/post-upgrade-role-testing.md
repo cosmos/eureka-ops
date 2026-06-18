@@ -103,8 +103,9 @@ failed`**, not an absolute total: testnet has 2 escrows (→ 32); **mainnet has 
 migration (the escrow beacon upgrade flips all escrow proxies regardless) — so all 3 still appear.
 
 > **After step 10 on mainnet, role `RATE_LIMITER(5)` is NOT empty** (testnet had zero holders,
-> which is why role 5 stayed empty there). Populate `.accessManagerRoles.rateLimiters` in
-> `deployments/mainnet/1.json` with the re-granted holders so Part B matches exactly; otherwise the
+> which is why role 5 stayed empty there). Populate `rateLimiters` (**top-level**, NOT under
+> `.accessManagerRoles`, which the deploy rewrites) in `deployments/mainnet/1.json` with the re-granted
+> holders so Part B matches exactly; otherwise the
 > tool flags the live role-5 holders as `UNEXPECTED` and exits non-zero. See
 > [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md)
 > for the snapshot.

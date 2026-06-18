@@ -94,6 +94,15 @@ _build: && _generate-script-helper
 _confirm-settings script_flags:
     #!/bin/bash
     set -eou pipefail
+    # Mainnet hot-key guard: a set PRIVATE_KEY makes broadcast recipes sign with that hot key instead of the
+    # Ledger (see `wallet` above). On mainnet (chain 1) that must never happen silently — refuse and require
+    # an explicit override. Mainnet deploys use --ledger; the Safe/timelock paths don't use `wallet` at all.
+    if [ "{{chain}}" = "1" ] && [ -n "${PRIVATE_KEY:-}" ]; then
+        echo "REFUSING: PRIVATE_KEY is set on mainnet (EUREKA_CHAIN=1) — a hot key would sign this broadcast" >&2
+        echo "instead of the Ledger. Unset PRIVATE_KEY and use --ledger (see runbook 'Signing'). To truly" >&2
+        echo "intend a hot-key mainnet broadcast, set ALLOW_MAINNET_PRIVATE_KEY=1." >&2
+        [ "${ALLOW_MAINNET_PRIVATE_KEY:-}" = "1" ] || exit 1
+    fi
     echo "You are about to run a script with the following settings:"
     just info-env
     echo

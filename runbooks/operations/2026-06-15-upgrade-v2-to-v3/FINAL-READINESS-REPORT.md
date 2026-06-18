@@ -6,7 +6,8 @@
 ## Verdict
 
 **Off-window engineering, tooling, and runbooks are complete and adversarially validated** (3 review
-rounds, every empirical claim reproduces). **No contract changes.** The readiness items are closed.
+rounds, every empirical claim reproduces). **No custom contract code** (the pinned `solidity-v3.0.1` release
+is deployed as-is, including its net-new ICS27GMP app — change 3 below). The readiness items are closed.
 **The C4 end-to-end proof gate has now passed** (2026-06-17) — two real cluster proofs from the new-build
 prover verified on-chain against the deployed v6.1.0 verifier (see Gates). The one remaining gate is
 **operational: the live cutover steps** (SP1 staging + the signer hash-table at proposal time). This is
@@ -14,14 +15,20 @@ prover verified on-chain against the deployed v6.1.0 verifier (see Gates). The o
 
 ## The upgrade in brief
 
-Two coupled changes to a live IBC bridge (`solidity-ibc-eureka`) on **mainnet (chain 1)**, cut over
-**atomically** so the chain never sits in a mixed v2/v3 state:
+Three coupled changes to a live IBC bridge (`solidity-ibc-eureka`) on **mainnet (chain 1)**. The first two
+cut over **atomically** (one MultiSend) so the chain never sits in a mixed v2/v3 state; the third is a
+post-execute registration:
 
 1. **v2→v3 core** — authorization moves from per-contract `AccessControl` to a single shared OZ
    `AccessManager` (admin = the existing 72 h `TimelockController`). Four contracts upgrade: `ICS20Transfer`,
    `ICS26Router`, the `Escrow` beacon, the `IBCERC20` beacon.
 2. **SP1 v6.1 light-client migration** — Tendermint clients move to v6.1 proof programs (fresh trusted state,
    v6.1 vkeys, a verifier gateway).
+3. **ICS27GMP (net-new app)** — the v3 AccessManager bootstrap also deploys a greenfield `ICS27GMP`
+   message-passing app + `ICS27Account` beacon (from the pinned release), registered on the live ICS26Router
+   via a post-execute **2-of-5 customizer-Safe `addIBCApp` CALL** (`verify-deployment` reverts until it is).
+   **Inert without a counterparty channel** (none wired to `gmpport`), but net-new on-chain surface —
+   accepted by explicit decision (see RECORD).
 
 **Execution model:** all timelock `execute(...)` calls are packed into **one** `MultiSendCallOnly.multiSend`
 via DelegateCall — atomic, ordered by a timelock predecessor (`ICS20`→`ICS26`). Governance is a **4-of-7
@@ -153,4 +160,4 @@ is a 2-of-5 Safe (step 8 = a Safe CALL, not a broadcast) · proposer = a single 
 - Procedure: [`../../upgrade-v2-to-v3.md`](../../upgrade-v2-to-v3.md). Scripts: `scripts/verify-roots.sh`,
   `validate-v3-roles.py`, `discover-v2-roles.py`, `signer-verify.sh`, `safe-propose.sh`.
 
-*This effort: 16 commits / 23 files / 0 contract changes since the review baseline (`188912e..HEAD`).*
+*This effort: 16 commits / 23 files / 0 contract-source changes since the review baseline (`188912e..HEAD`).*
