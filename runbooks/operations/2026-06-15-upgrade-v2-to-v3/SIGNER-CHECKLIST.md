@@ -40,16 +40,19 @@ The script independently recomputes the hash, so a tampered UI shows as a mismat
 
 | nonce | Safe | to | op | action | expected safeTxHash |
 | --- | --- | --- | --- | --- | --- |
-| ‹N›  | gov | `0xb3999B2D…` timelock | CALL | schedule ICS20Transfer upgrade | `0x…` |
-| ‹N+1›| gov | `0xb3999B2D…` timelock | CALL | schedule ICS26Router upgrade | `0x…` |
-| ‹N+2›| gov | `0xb3999B2D…` timelock | CALL | schedule Escrow upgrade | `0x…` |
-| ‹N+3›| gov | `0xb3999B2D…` timelock | CALL | schedule IBCERC20 upgrade | `0x…` |
-| ‹N+4›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate cosmoshub-0 | `0x…` |
-| ‹N+5›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate ledger-mainnet-1 | `0x…` |
-| ‹N+6›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x4b46ea82…` | `0x…` |
-| ‹N+7›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x4b46ea82…` | `0x…` |
-| ‹X›  | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7), `--expect-subcalls 8`** | `0x…` |
-| ‹Y›  | cust | `0x3aF13430…` ICS26Router | CALL | addIBCApp gmpport (step 8) | `0x…` |
+| 18 | gov | `0xb3999B2D…` timelock | CALL | schedule ICS20Transfer upgrade | `0x0fde583fd53e0befd17de9441c964d1d65199327054a2b31088326fab253f2df` |
+| 19 | gov | `0xb3999B2D…` timelock | CALL | schedule ICS26Router upgrade | `0x431e686b5bbd6670fe90ff5a07c6af0f51ace9a999dd3a3f8341530b8129bb27` |
+| 20 | gov | `0xb3999B2D…` timelock | CALL | schedule Escrow upgrade | `0x89042ea55322d08457009db3cb34e42bc048863f7fcfec93add5e436411dccac` |
+| 21 | gov | `0xb3999B2D…` timelock | CALL | schedule IBCERC20 upgrade | `0x48642c35f6572b6538b0954c6eacf3df9e98a72c0ce41898c6696c92fdf8bc63` |
+| 22 | gov | `0xb3999B2D…` timelock | CALL | schedule migrate cosmoshub-0 | `0x01fdcf1f39e4d02979ad9806c7def549089966dbb7651204eb9429f3d4cb35aa` |
+| 23 | gov | `0xb3999B2D…` timelock | CALL | schedule migrate ledger-mainnet-1 | `0x898b498f66e4a57e8969c7e9f137bad23ecb4e9fbed6b6da6c99757c1290502e` |
+| 24 | gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x4b46ea82…` | `0x2a0bca9f92e06eab69c72333e9285f443f6a6359372746d634bbd9aef3ca6c58` |
+| 25 | gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x4b46ea82…` | `0x1335e17eb41acdcbb4b7981323896581f9caa175ee05bd9f24b74fa8674eb8c7` |
+| 26* | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7), `--expect-subcalls 8`** | `0x…` ‹fill at Phase C› |
+| ‹Y›  | cust | `0x3aF13430…` ICS26Router | CALL | addIBCApp gmpport (step 8) | `0x…` ‹fill at Phase D› |
+
+\* The step-7 execute lands at nonce **26 only if** all 8 schedules (18–25) have executed and nothing else
+was queued meanwhile; the coordinator re-confirms the live nonce + fills its `safeTxHash` at Phase C.
 
 The **step-7 execute is the only DelegateCall** (and only to `0x9641d764…`); every other tx is a **CALL**.
 The script REJECTs anything else — you don't have to memorise it.
