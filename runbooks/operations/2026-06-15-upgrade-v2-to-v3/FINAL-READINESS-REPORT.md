@@ -6,10 +6,11 @@
 ## Verdict
 
 **Off-window engineering, tooling, and runbooks are complete and adversarially validated** (3 review
-rounds, every empirical claim reproduces). **No contract changes.** The readiness items are closed. Two
-gates remain before scheduling, both operational: **(1) the C4 end-to-end proof test** (one operator-run
-check against the live new-build proof-api) and **(2) the live cutover steps** (SP1 staging + the signer
-hash-table at proposal time). This is **"ready to schedule once C4 passes,"** not "go now."
+rounds, every empirical claim reproduces). **No contract changes.** The readiness items are closed.
+**The C4 end-to-end proof gate has now passed** (2026-06-17) — two real cluster proofs from the new-build
+prover verified on-chain against the deployed v6.1.0 verifier (see Gates). The one remaining gate is
+**operational: the live cutover steps** (SP1 staging + the signer hash-table at proposal time). This is
+**"ready to schedule,"** with execution gated only on the cutover window.
 
 ## The upgrade in brief
 
@@ -45,6 +46,8 @@ escrow is still upgraded). Rate-limiter holders re-granted: `0x4b46ea82…`, `0x
 ## Status
 
 - **Executed end-to-end on Sepolia testnet** (verified). Mainnet not yet executed.
+- **C4 proof gate passed** (2026-06-17): two real Groth16 proofs from the new-build prover (reserved
+  cluster, exact deployed `v2.0.0` ELF) verified on-chain against the v6.1.0 verifier. See Gates.
 - **Decisions locked** (see below).
 - **Tooling built + validated:** Ledger proposer signing, packer schedule-state guard, admin-revoke guard,
   signer verification tool + checklist, trust-root assertion script, role validators.
@@ -62,9 +65,10 @@ escrow is still upgraded). Rate-limiter holders re-granted: `0x4b46ea82…`, `0x
 
 ## Review history
 
-Three rounds, all of which **re-ran the validators** (not read-only): a 6-agent focused pass, a 33-agent
-multi-dimension pass with a coverage critic, and three round-2 follow-ups. ~24 numbered findings + footguns
-+ coverage gaps C1–C12. Outcome:
+Multiple independent rounds, all of which **re-ran the validators** (not read-only): a 6-agent focused
+pass, a 33-agent multi-dimension pass with a coverage critic, three round-2 follow-ups, and an 8-agent
+doc-quality pass (clarity/correctness/verbosity). ~24 numbered findings + footguns + coverage gaps C1–C12.
+Outcome:
 
 - **One real bug found and fixed (proven):** pre-staged rate-limiter validation keys were nested under
   `.accessManagerRoles`, which `DeployV3AccessManager` rewrites — silently wiping them at deploy. Moved
@@ -94,16 +98,25 @@ config bound the set). `validate-v3-roles` includes a hard rate-limiter wiring g
 signer tool rejects every malicious-calldata shape (ADMIN grant, non-execute sub-call, wrong delegatecall
 target, sub-call count mismatch).
 
-## Remaining gates
+## Gates
 
-1. **C4 — end-to-end proof test (the last technical gate).** Every check above matches *recorded values*;
-   none proves the prover actually emits proofs the on-chain v6.1.0 verifier *accepts* (proof format depends
-   on the prover SP1-SDK version — a vkey match is necessary but not sufficient). **Pre-window:** drive the
-   new-build proof-api to produce a real `updateClient` proof and verify it lands against a fork-migrated
-   mainnet client; record the prover SDK version. *(Requires the live proof-api — operator-run.)*
-2. **Live cutover:** SP1 step-5 staging (fresh trusted state + v6.1 vkeys + verifier repoint), the
+1. **C4 — end-to-end proof test — PASSED (2026-06-17).** The open risk: every other check matched *recorded
+   values*, but none proved the prover actually emits proofs the on-chain v6.1.0 verifier *accepts* — proof
+   format depends on the prover SP1-SDK version, so a vkey match is necessary but not sufficient. Closed
+   empirically: two real **Groth16** proofs from the new-build prover — operator-run against the **reserved
+   private cluster**, using the exact deployed `sp1-programs v2.0.0` ELF (sha `6a6a40df`) — verified on-chain
+   against the deployed **v6.1.0** verifier (`0xb69f2584…`, selector `0x4388a21c`) via
+   `gateway.verifyProof(bytes32,bytes,bytes)` (the same call `_verifySP1Proof` makes) **and** the direct
+   verifier. Prover SDK recorded: `sp1-sdk 6.1.0`, circuit `v6.1.0`, image `proof-api:10a6a10`. *Scope note:*
+   this proves the cryptographic accept-path via the verifier view call; it does not drive a full
+   `updateClient` against a fork-migrated client — not needed, since the format/acceptance risk the gate
+   existed for is gone. Tooling: `scripts/verify-c4-proof.sh`, `script/helpers/decode_update_client.py`.
+2. **Live cutover (remaining).** SP1 step-5 staging (fresh trusted state + v6.1 vkeys + verifier repoint), the
    schedule → 72 h → execute → relayer-upgrade → init/verify/validate sequence, and the coordinator's signer
-   hash-table (generated + second-reviewed at proposal time).
+   hash-table (generated + second-reviewed at proposal time). **Relayer-upgrade note:** the new-build proof-api
+   must run an image carrying [ibc-manifests#91](https://github.com/skip-mev/ibc-manifests/pull/91) (larger
+   `/dev/shm`) **and** the pod must be restarted to pick up the mount — otherwise proving for `cosmoshub-0`
+   (chainId `cosmoshub-4`) fails. See Risk posture.
 
 ## Risk posture
 
@@ -111,8 +124,16 @@ target, sub-call count mismatch).
   worst case is a wasted 72 h round. Storage survives the upgrade, so in-flight packets are delayed-not-lost.
 - **No clean relaying halt** (owner-confirmed): the prod relayer stays on the old build through the 72 h
   delay and is *upgraded* right after the execute — the gap is a brief restart, not an outage.
-- **Residual:** the C4 integration risk above (closed by the test); and **single-operator** risk — accepted
-  (see decisions), which raises the bar for thorough pre-window checks (hence definitive C4).
+- **Proof-api `/dev/shm` (found + fixed this cycle):** the new-build proof-api proves Cosmos Hub through the
+  SP1 native executor's shared-memory trace ring in `/dev/shm`, which Kubernetes defaults to 64 MiB — a single
+  `cosmoshub-4` proof needs ~63 MiB, so it fails under any concurrency (surfacing as `Program simulation
+  failed`). Fixed by a 2 GiB RAM-backed `/dev/shm` in the **shared** relayer template
+  ([ibc-manifests#91](https://github.com/skip-mev/ibc-manifests/pull/91), merged), so prod inherits it.
+  Because the prod relayer is upgraded to the new build right after execute, **the cutover relayer-upgrade
+  step must deploy an image with this fix and restart the pod** (mount size is fixed at mount time). Full
+  write-up: [`../../../PROOF_API_FAILURE_MODE.md`](../../../PROOF_API_FAILURE_MODE.md).
+- **Residual:** **single-operator** risk — accepted (see decisions), which raises the bar for thorough
+  pre-window checks (the now-passed C4 test being the key one). The C4 integration risk is **closed**.
 
 ## Decisions on record
 
@@ -132,4 +153,4 @@ is a 2-of-5 Safe (step 8 = a Safe CALL, not a broadcast) · proposer = a single 
 - Procedure: [`../../upgrade-v2-to-v3.md`](../../upgrade-v2-to-v3.md). Scripts: `scripts/verify-roots.sh`,
   `validate-v3-roles.py`, `discover-v2-roles.py`, `signer-verify.sh`, `safe-propose.sh`.
 
-*This effort: 13 commits / 20 files / 0 contract changes since the review baseline (`188912e..HEAD`).*
+*This effort: 16 commits / 23 files / 0 contract changes since the review baseline (`188912e..HEAD`).*
