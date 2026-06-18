@@ -3,7 +3,8 @@
 You're signing the **8 scheduling transactions, nonces 18–25**, on the governance Safe
 `0x7B96CD54aA750EF83ca90eA487e0bA321707559a` — **one signature each, in any order.** For each:
 **run one command → it prints the values to expect → confirm your Safe UI + Ledger match them → sign.**
-The command runs **offline** (only `cast`, no network); nothing is signed until you approve on the Ledger.
+The command runs **offline** from the repo you checked out (only `cast`); nothing is signed until you
+approve on the Ledger. Your real protection is the **card-vs-Safe-UI-vs-Ledger** comparison below.
 
 > ## ⛔ Do NOT sign unless **both** are true
 > 1. the command ends with a single `PASS` and `echo $?` prints `0`; **and**
@@ -18,13 +19,12 @@ The command runs **offline** (only `cast`, no network); nothing is signed until 
 1. **Open the Safe** (pinned link → confirm it says **Ethereum** and the address matches):
    [queue](https://app.safe.global/transactions/queue?safe=eth:0x7B96CD54aA750EF83ca90eA487e0bA321707559a).
    Note the **nonce**. If it isn't one of the rows below (18–25) → **stop & report**.
-2. **Generate the expected card** — just the nonce:
+2. **Generate the expected card** — from the repo root, just the nonce:
    ```bash
-   bash ~/signer-verify.sh <NONCE>
+   bash scripts/signer-verify.sh <NONCE>
    ```
-   The script reads that nonce's published payload from `COORDINATOR-HASH-TABLE.md` (keep it in the same
-   folder), recomputes the hashes **offline**, and prints exactly what you should see. No network, no hash
-   to paste.
+   It finds this operation's `COORDINATOR-HASH-TABLE.md` in the repo, recomputes the hashes **offline**,
+   and prints exactly what you should see. No network, no hash to paste.
 3. **`PASS` + exit `0`?** → continue. Anything else → **stop & report** (see the box above).
 4. **Confirm your Safe UI + Ledger match the card.** Open the pending tx → **Advanced details** and check
    `to` / `operation` / `data` / `safeTxHash` equal the card's. When you click **Sign**, your **Ledger**
@@ -34,7 +34,7 @@ The command runs **offline** (only `cast`, no network); nothing is signed until 
    the hashes; rejecting on the Ledger signs nothing — safe to inspect.)
 
 Every tx this round is a **CALL to the timelock** `0xb3999B2D…`. The script recomputes each hash from the
-published payload and checks it against the published `safeTxHash`, so a tampered payload prints `REJECT`
+payload in the repo and checks it against the published `safeTxHash`, so a tampered payload prints `REJECT`
 — **trust a `REJECT`.**
 
 ## Table  *(one row = one nonce; never sign a nonce not listed here)*
@@ -55,33 +55,24 @@ bound by the `safeTxHash`; you don't need to chase them.
 
 ## Setup (once, then ignore)
 
-- **Get both files** from the trusted channel and **keep them in the same folder** (`~/`):
-  `signer-verify.sh` and `COORDINATOR-HASH-TABLE.md`. Get them as **files** (don't paste into an editor —
-  that changes the bytes), then verify both digests — all 64 chars, mismatch → don't use it:
+- **Check out the repo** on the branch the coordinator gives you, then run from its root:
   ```bash
-  sha256sum ~/signer-verify.sh ~/COORDINATOR-HASH-TABLE.md     # macOS: shasum -a 256
+  git clone <repo-url> && cd eureka-ops && git checkout <branch-the-coordinator-named>
   ```
-  ```
-  b3f66119bb7481acfb28e9fb6cb13a8fa073c71543ca5d5f800f79472f7fb302  signer-verify.sh
-  59bcf738e7035edf2ce4117fb3544e0fac53bfd1a4fb7f425b518f93a15efab9  COORDINATOR-HASH-TABLE.md
-  ```
-  Cross-check both digests (and a couple of table hashes) against a **second source** (signed git tag /
-  another owner) — the table now drives the verification, so its integrity matters as much as the script's.
-- **Foundry (for `cast`):** `curl -L https://foundry.paradigm.xyz | bash`, then **open a new terminal**
-  (or `source ~/.bashrc`), run `foundryup`, check `cast --version`. `cast` is the only tool needed — no
-  `jq`, no network.
+  Checking out that branch is how you trust the script + table — git verifies the file contents for you,
+  so there's nothing to download or sha256 separately.
+- **Install Foundry (for `cast`):** `curl -L https://foundry.paradigm.xyz | bash`, then **open a new
+  terminal** (or `source ~/.bashrc`), run `foundryup`, and check `cast --version`. `cast` is the only tool
+  the verifier needs — no `jq`, no network.
 - **Ledger:** enable **Blind signing** (older firmware: "Allow contract data") and update the app, or it
   can't show the hashes. Confirm your address is a Safe owner (Safe UI → Settings → Owners).
-- **Windows:** do everything in **WSL/Ubuntu** (`wsl --install`). Browser downloads land at
-  `/mnt/c/Users/<you>/Downloads/` → `cp … ~/`; check `file ~/signer-verify.sh` says `ASCII text` (not CRLF).
+- **Windows:** do everything in **WSL/Ubuntu** (`wsl --install`) and **clone the repo inside WSL** (your
+  Linux home, not `/mnt/c`) so the scripts stay runnable.
 
 ## If the script can't find the table
 
-Point it at the file (keep them together to avoid this): `bash ~/signer-verify.sh <NONCE> --table ~/COORDINATOR-HASH-TABLE.md`.
-Deeper fallback — paste your nonce's row fields **from the table** (never the Safe UI):
-```bash
-bash ~/signer-verify.sh --to <TO> --operation <0|1> --data <0xDATA> --nonce <NONCE> --expect <SAFETXHASH>
-```
+It expects to run from inside the checked-out repo. From elsewhere, point it at the file:
+`bash scripts/signer-verify.sh <NONCE> --table runbooks/operations/2026-06-18-upgrade-v2-to-v3/COORDINATOR-HASH-TABLE.md`.
 
 ---
 *This round is the 8 schedules only. The atomic **execute** (~3 days later) and the **customizer**

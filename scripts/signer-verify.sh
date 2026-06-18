@@ -7,9 +7,9 @@ set -euo pipefail
 # signing. NOTHING is fetched, signed, or sent — no network, no API key, no jq. Needs only `cast` (Foundry).
 #
 #   scripts/signer-verify.sh <nonce> [--table <path>] [--expect-subcalls <N>]
-#       Look up the nonce's payload in the table (default: COORDINATOR-HASH-TABLE.md next to this script,
-#       in the current dir, or in $HOME), recompute its hashes, confirm they match the table's published
-#       safeTxHash, and print the expected card.
+#       Run it from the repo you checked out: it finds the operation's COORDINATOR-HASH-TABLE.md
+#       automatically (under <repo>/runbooks/operations/), recomputes the nonce's hashes, confirms they
+#       match the table's published safeTxHash, and prints the expected card. --table overrides discovery.
 #   scripts/signer-verify.sh --to <addr> --operation <0|1> --data <0x..> --nonce <n> --expect <0xHash> [--safe <addr>]
 #       Manual mode: paste the row's to/operation/data/expect FROM THE TABLE (never from the Safe UI).
 #
@@ -191,9 +191,18 @@ printf '%s' "$nonce" | grep -Eq '^[0-9]+$' || { echo "first argument must be a n
 
 find_table() {
   if [ -n "$TABLE" ]; then [ -f "$TABLE" ] && { printf '%s' "$TABLE"; return 0; }; return 1; fi
-  local d; d="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
-  for c in "${d:-.}/COORDINATOR-HASH-TABLE.md" "./COORDINATOR-HASH-TABLE.md" "$HOME/COORDINATOR-HASH-TABLE.md"; do
-    [ -f "$c" ] && { printf '%s' "$c"; return 0; }
+  local d root m; local matches=()
+  d="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  # checked-out repo: this script lives at <repo>/scripts/, the table at <repo>/runbooks/operations/<op>/
+  root="$(cd "${d:-.}/.." 2>/dev/null && pwd || true)"
+  if [ -n "$root" ]; then
+    for m in "$root"/runbooks/operations/*/COORDINATOR-HASH-TABLE.md; do [ -f "$m" ] && matches+=("$m"); done
+    [ "${#matches[@]}" -eq 1 ] && { printf '%s' "${matches[0]}"; return 0; }
+    [ "${#matches[@]}" -gt 1 ] && { echo "ERROR: multiple operation tables under $root/runbooks/operations/ — pass --table <path>" >&2; return 2; }
+  fi
+  # fallback: co-located with the script, the current dir, or $HOME
+  for m in "${d:-.}/COORDINATOR-HASH-TABLE.md" "./COORDINATOR-HASH-TABLE.md" "$HOME/COORDINATOR-HASH-TABLE.md"; do
+    [ -f "$m" ] && { printf '%s' "$m"; return 0; }
   done
   return 1
 }
@@ -201,6 +210,7 @@ tbl="$(find_table)" || { echo "ERROR: payloads table not found. Put COORDINATOR-
 
 # payload rows look like:  <nonce>|<safe>|<to>|<operation>|<safeTxHash>|<data>
 row="$(grep "^${nonce}|0x" "$tbl" | head -1)" || true
+row="$(printf '%s' "$row" | tr -d '\r')"   # tolerate CRLF if the repo was checked out on Windows
 [ -n "$row" ] || { echo "No payload row for nonce $nonce in $tbl. Sign ONLY nonces listed there; anything else -> stop and report." >&2; exit 1; }
 IFS='|' read -r r_nonce r_safe r_to r_op r_exp r_data <<EOF
 $row
