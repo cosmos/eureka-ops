@@ -33,7 +33,7 @@ post-execute registration:
 **Execution model:** all timelock `execute(...)` calls are packed into **one** `MultiSendCallOnly.multiSend`
 via DelegateCall — atomic, ordered by a timelock predecessor (`ICS20`→`ICS26`). Governance is a **4-of-7
 hardware Safe** + **72 h timelock**; a second round is impractical, so the rate-limiter re-grant is **folded
-into the single round** → a **10-sub-call** bundle (4 core + 2 migrations + 4 rate-limiter grants).
+into the single round** → an **8-sub-call** bundle (4 core + 2 migrations + 2 rate-limiter grants).
 
 **The contract code is not in this repo** — it is `@cosmos/solidity-ibc-eureka` pinned at `solidity-v3.0.1`
 (commit `04b9767`). This repo is the **ops tooling** (forge scripts, `just` recipes, validators, runbooks).
@@ -48,7 +48,8 @@ into the single round** → a **10-sub-call** bundle (4 core + 2 migrations + 4 
 | SP1 gateway → real verifier | `0x397A5f7f…` → `0xb69f2584…` (`VERSION v6.1.0`) |
 
 **Migrate set:** `cosmoshub-0` + `ledger-mainnet-1`. `client-4` is **dropped** (not relayed in prod; its
-escrow is still upgraded). Rate-limiter holders re-granted: `0x4b46ea82…`, `0x64259f72…` on both escrows.
+escrow is still upgraded). Rate-limiter holder re-granted: `0x4b46ea82…` on both escrows (`0x64259f72…`
+**dropped** — decision 2026-06-18).
 
 ## Status
 
@@ -58,9 +59,11 @@ escrow is still upgraded). Rate-limiter holders re-granted: `0x4b46ea82…`, `0x
 - **Decisions locked** (see below).
 - **Tooling built + validated:** Ledger proposer signing, packer schedule-state guard, admin-revoke guard,
   signer verification tool + checklist, trust-root assertion script, role validators.
-- **Rehearsed on a mainnet fork:** the core timelock path, a staged-v6.1 variant, the **exact 10-op
-  fold** (≈ 616k gas), and the **2-of-5 customizer-Safe `addIBCApp`** registration via the real
-  `execTransaction` (not an EOA broadcast) — `getIBCApp(gmpport)` lands and `VerifyDeployment` passes.
+- **Rehearsed on a mainnet fork:** the core timelock path, a staged-v6.1 variant, and the **live 8-op/2-grant
+  fold** (re-rehearsed 2026-06-18 after dropping `0x64259f72…` — `status 0x1`, ≈ 523k gas, safeTxHash matched
+  on-chain, both grants land; the prior 10-op/4-grant fold was ≈ 616k), and the
+  **2-of-5 customizer-Safe `addIBCApp`** registration via the real `execTransaction` (not an EOA broadcast)
+  — `getIBCApp(gmpport)` lands and `VerifyDeployment` passes.
 
 ## Independently verified — solid, no change needed
 
@@ -89,13 +92,13 @@ Outcome:
 ## Re-runnable evidence (reproduce these)
 
 ```bash
-H1=0x4b46ea82D80825CA5640301f47C035942e6D9A46; H2=0x64259f722A0868CCf58A935C61A292cEA9dF035a
+H1=0x4b46ea82D80825CA5640301f47C035942e6D9A46    # H2 (0x64259f72…) DROPPED from the re-grant set (2026-06-18)
 # Trust roots (FROM_BLOCK required) — expect "ALL TRUST-ROOT CHECKS PASSED" (17/17)
 ETH_RPC=<mainnet> FROM_BLOCK=22188631 scripts/verify-roots.sh mainnet 1
 # Role wiring (testnet) — expect "32 passed, 0 failed"
 ETH_RPC=<testnet> python3 scripts/validate-v3-roles.py testnet 11155111
-# Exact 10-op fold on a mainnet fork — expect "bundle gas used: 616104", "all 4 folded grants landed"
-RL_GRANTS="cosmoshub-0:$H1,cosmoshub-0:$H2,ledger-mainnet-1:$H1,ledger-mainnet-1:$H2" SP1_CLIENT_IDS="cosmoshub-0,ledger-mainnet-1" \
+# 8-op fold on a mainnet fork (2 grants; H2 dropped 2026-06-18) — expect status 0x1, both folded grants land
+RL_GRANTS="cosmoshub-0:$H1,ledger-mainnet-1:$H1" SP1_CLIENT_IDS="cosmoshub-0,ledger-mainnet-1" \
   bash scripts/shadow-v2-to-v3-timelock-rehearsal.sh 1 mainnet shadow-mainnet <fork-rpc>
 ```
 

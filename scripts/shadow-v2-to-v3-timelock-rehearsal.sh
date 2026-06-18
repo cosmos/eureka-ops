@@ -68,7 +68,7 @@ sp1_client_ids="${SP1_CLIENT_IDS:-}"
 rehearse_rl_grant="${REHEARSE_RATE_LIMITER_GRANT:-0}"
 rl_grant_addr="${RL_GRANT_ADDRESS:-0x000000000000000000000000000000000000dEaD}"
 rl_grant_cid_override="${RL_GRANT_CLIENT_ID:-}"
-# RL_GRANTS="cid:holder,cid:holder,..." rehearses the EXACT mainnet fold (4 grants -> a 10-sub-call bundle).
+# RL_GRANTS="cid:holder,cid:holder,..." rehearses the EXACT mainnet fold (e.g. 2 grants -> an 8-sub-call bundle).
 # Unset = the single representative grant (back-compat). Setting RL_GRANTS implies REHEARSE_RATE_LIMITER_GRANT.
 rl_grants_spec="${RL_GRANTS:-}"
 [ -n "$rl_grants_spec" ] && rehearse_rl_grant=1
@@ -460,7 +460,7 @@ execute_atomic() {
   fi
   echo "    ok: v3 upgrade executed atomically via Safe MultiSend"
   # Bundle-gas measurement (F9): record the atomic execute's gas against the block limit so a mainnet
-  # 10-sub-call bundle is known to fit. execTransaction status==1 here also proves the inner call did not
+  # 8-sub-call bundle is known to fit. execTransaction status==1 here also proves the inner call did not
   # silently fail (which it could only do with a non-zero safeTxGas under-estimate -- we pass 0).
   local gas_used block_limit status
   gas_used="$(jq -r '.gasUsed // empty' <<<"$receipt")"; gas_used="$(cast to-dec "$gas_used" 2>/dev/null || echo "$gas_used")"

@@ -341,7 +341,7 @@ just timelock-grant-rate-limiter-role schedule
 just timelock-grant-rate-limiter-role execute <safe_nonce>
 ```
 
-> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none) — confirmed on-chain via `hasRole`. These are **not** in the deployment JSON, so this step is **not** a no-op on mainnet (it was on testnet). The authoritative, maintained copy of this snapshot lives in [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md); re-confirm with `discover-v2-roles.py` immediately before cutover (holders can change).
+> **Mainnet snapshot (2026-06-16):** `RATE_LIMITER_ROLE` is held by `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` and `ledger-mainnet-1` escrows (the `client-4` escrow has none) — confirmed on-chain via `hasRole`. **Re-grant `0x4b46ea82…` ONLY — `0x64259f72…` is dropped (decided 2026-06-18; see RECORD decision #9).** These are **not** in the deployment JSON, so this step is **not** a no-op on mainnet (it was on testnet). The authoritative, maintained copy of this snapshot lives in [`runbooks/operations/2026-06-15-upgrade-v2-to-v3/RECORD.md`](operations/2026-06-15-upgrade-v2-to-v3/RECORD.md); re-confirm with `discover-v2-roles.py` immediately before cutover (holders can change).
 
 `RATE_LIMITER_ROLE` is manager-wide once any escrow's target role is configured. `verify-deployment` does not assert these grants — confirm them manually.
 

@@ -14,7 +14,7 @@ set -euo pipefail
 # --expect <hash>: paste the safeTxHash from the coordinator's table; the script does a full byte-for-byte
 # compare and prints one unmissable PASS or REJECT (and exits non-zero on REJECT). USE IT.
 # --expect-subcalls <N>: for the step-7 MultiSend, REJECT unless it has exactly N sub-calls (catches an
-# omitted/extra op the per-op pending guard can't see; e.g. N=10 = 4 core + 2 migrations + 4 rate-limiter).
+# omitted/extra op the per-op pending guard can't see; e.g. N=8 = 4 core + 2 migrations + 2 rate-limiter).
 #
 # Exit code: 0 only if no REJECT condition fired (and, if --expect/--expect-subcalls were given, they matched).
 # A duplicate same-nonce result (>1 tx at the nonce) is also a non-zero exit. Non-zero otherwise.

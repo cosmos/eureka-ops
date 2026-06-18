@@ -357,7 +357,7 @@ self-discovers role names via the on-chain getters (and classifies per-client
 | v2 role(s) | live holders | v3 disposition |
 |---|---|---|
 | RELAYER, PAUSER, UNPAUSER, DELEGATE_SENDER, PORT+CLIENT_ID_CUSTOMIZER, ERC20_CUSTOMIZER | **match the JSON exactly** | auto-granted by the bootstrap from the JSON — no action |
-| **RATE_LIMITER** (escrows `cosmoshub-0`, `ledger-mainnet-1`) | `0x4b46ea82…`, `0x64259f72…` (client-4 escrow: none) | **not in the JSON → re-grant in step 10** |
+| **RATE_LIMITER** (escrows `cosmoshub-0`, `ledger-mainnet-1`) | live v2: `0x4b46ea82…`, `0x64259f72…` (client-4 escrow: none) | **re-grant `0x4b46ea82…` only in step 10; `0x64259f72…` dropped (2026-06-18, RECORD #9)** |
 | TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 role** — it managed who may relabel IBCERC20 metadata (`grant/revokeMetadataCustomizerRole` → `setMetadata`). v3 removes mutable IBCERC20 metadata entirely; the replacement is `setCustomERC20` under **`ERC20_CUSTOMIZER`** (migrated), so `0x4b46ea82…` keeps the comparable power. Only the *in-place relabel of an auto-token* is gone. |
 | LIGHT_CLIENT_MIGRATOR (×11 per-client: client-0..4, hub-testnet-0..3, cosmoshub-0, ledger-mainnet-1) | deployer + timelock | **no v3 role** (migrateClient is ADMIN-gated) — dropped; governance-held only |
 | DEFAULT_ADMIN (ICS26 + ICS20) | timelock `0xb3999B2D…` | becomes v3 `ADMIN` (the timelock) |

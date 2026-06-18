@@ -193,8 +193,8 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
      fat-fingered `REVOKE_ROLE=0` can't brick governance.
    Validated on-chain against a real (Sepolia-fork) timelock: a freshly-scheduled op →
    `isOperationPending=true` (passes, even pre-delay); an unscheduled op → `false` (refused). The full
-   mainnet-fork rehearsal was subsequently **done** — see "Single-round folding mechanism" below (the exact
-   10-op fold, 2026-06-17), and the staged-v6.1 variant (migrating to the v6.1 vkeys + gateway,
+   mainnet-fork rehearsal was subsequently **done** — see "Single-round folding mechanism" below (the then-10-op
+   fold, 2026-06-17; now 8-op/2-grant per decision #9), and the staged-v6.1 variant (migrating to the v6.1 vkeys + gateway,
    `check-sp1-verifier` green). The testnet rehearsal can no longer run — its JSON is post-upgrade.
 8. **ICS27GMP go/no-go — GO, accepted as deployed-but-inert (2026-06-18).** The v3 bootstrap deploys a
    greenfield `ICS27GMP` message-passing app + `ICS27Account` beacon (`script/DeployV3AccessManager.sol`
@@ -207,6 +207,20 @@ Team answers to the pre-mainnet open questions, each with the evidence that back
    is now exercised on a mainnet fork by the timelock rehearsal (2026-06-18): `execTransaction` from the
    customizer Safe `0x4b46ea82…` (threshold 2) lands, `getIBCApp(gmpport)` == the ICS27 proxy, and
    `VerifyDeployment` passes — replacing the prior impersonated single-sender broadcast.
+9. **RATE_LIMITER re-grant — `0x64259f72…` DROPPED (decided 2026-06-18).** The live v2 `RATE_LIMITER_ROLE`
+   set is `0x4b46ea82…` + `0x64259f72…` on both the `cosmoshub-0` and `ledger-mainnet-1` escrows. In v3 only
+   **`0x4b46ea82…`** (the 2-of-5 customizer Safe) is re-granted; **`0x64259f72…` is intentionally NOT
+   re-granted** and loses rate-limiter access. Effect on the atomic bundle: **2** rate-limiter grants (not 4)
+   → an **8-sub-call** MultiSend (`signer-verify.sh --expect-subcalls 8`). `1.json` now
+   `rateLimiters=[0x4b46ea82…]`. **CAUTION:** `discover-v2-roles.py` does **not** reconcile rate-limiters
+   against the JSON (RATE_LIMITER has no JSON key in its reconcile loop) — it just **lists the live v2
+   holders** (`0x4b46ea82…` **and** `0x64259f72…`) as "to re-grant" and exits 0. So it will neither fail nor
+   warn here: the operator must consciously re-grant **only** `0x4b46ea82…` and **skip** `0x64259f72…`.
+   **Dress rehearsal re-run (2026-06-18):** the exact 8-op bundle executed on a mainnet fork — `status 0x1`,
+   **523,273 gas**, the recipe `safeTxHash` matched the Safe's on-chain `getTransactionHash`, both folded
+   grants landed (`setTargetFunctionRole` + `grantRole`), and the 2-of-5 `addIBCApp` + `VerifyDeployment`
+   passed (`RL_GRANTS="cosmoshub-0:0x4b46ea82…,ledger-mainnet-1:0x4b46ea82…"`, `SHADOW_FORK_PRESERVE_DEPLOYMENT=1`
+   against the pre-Phase-A JSON, since the live JSON is now post-deploy).
 
 | Thing | Address / value |
 | --- | --- |
@@ -274,7 +288,7 @@ role model is richer; reconciled via `discover-v2-roles.py` (2026-06-16, pre-upg
 | v2 role(s) | live holders | v3 disposition |
 | --- | --- | --- |
 | RELAYER, PAUSER, UNPAUSER, DELEGATE_SENDER, PORT+CLIENT_ID_CUSTOMIZER, ERC20_CUSTOMIZER | **match the JSON exactly** | auto-granted by the bootstrap from the JSON — no action |
-| **RATE_LIMITER** | `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` (escrow `0x0fA75C2c…`) and `ledger-mainnet-1` (escrow `0xC76944B0…`) escrows; **none** on `client-4` (escrow `0x3f36Fd49…`) | **not auto-granted by the bootstrap** (rate-limiter is not a bootstrap struct field) → **re-grant** (step 10 / fold into the step-7 execute). Pre-staged **top-level** in `1.json` (`rateLimiters`/`rateLimitedEscrows`) for the *validator* only — kept out of `.accessManagerRoles`, which the deploy rewrites. **Not a no-op on mainnet** (it was on testnet); confirmed via `hasRole`. |
+| **RATE_LIMITER** | live v2: `0x4b46ea82…` and `0x64259f72…` on **both** the `cosmoshub-0` (escrow `0x0fA75C2c…`) and `ledger-mainnet-1` (escrow `0xC76944B0…`) escrows; **none** on `client-4` (escrow `0x3f36Fd49…`) | **Re-grant `0x4b46ea82…` ONLY** on both escrows (**2 grants**, folded into the step-7 execute). **`0x64259f72…` intentionally DROPPED** (2026-06-18, decision #9) — loses rate-limiter access in v3. Pre-staged **top-level** in `1.json` (`rateLimiters=[0x4b46ea82…]`/`rateLimitedEscrows`) for the *validator* — kept out of `.accessManagerRoles`, which the deploy rewrites. `discover-v2-roles.py` LISTS both as live v2 holders "to re-grant" (informational — it does NOT compare to the JSON or fail), so consciously re-grant **only** `0x4b46ea82…`. |
 | TOKEN_OPERATOR (ICS20) | `0x4b46ea82…`, timelock | **no v3 role** — it managed who may relabel IBCERC20 metadata (`grant/revokeMetadataCustomizerRole` → `setMetadata`). v3 removes mutable IBCERC20 metadata entirely; the replacement is `setCustomERC20` under **`ERC20_CUSTOMIZER`** (migrated), so `0x4b46ea82…` keeps the comparable power. Only the *in-place relabel of an auto-token* is gone. |
 | LIGHT_CLIENT_MIGRATOR (per-client) | deployer + timelock | **no v3 role** (`migrateClient` is ADMIN-gated) — dropped; governance-held only |
 | DEFAULT_ADMIN (ICS26 + ICS20) | timelock `0xb3999B2D…` | becomes v3 `ADMIN` (the timelock) |
@@ -316,7 +330,7 @@ A second schedule→delay→execute window is impractical on mainnet (72 h each)
 folded `execute(...)` blob must byte-match its scheduled op (identical prompt inputs) and that
 schedule must already have executed, or the whole atomic bundle reverts.
 
-**Rehearsed on a mainnet fork (2026-06-17) — the EXACT 10-op fold:** 4 core + 2 migrations
+**Rehearsed on a mainnet fork (2026-06-17) — the then-10-op fold (SUPERSEDED by decision #9 → now 8-op/2-grant):** 4 core + 2 migrations
 (`cosmoshub-0`, `ledger-mainnet-1`) + **4 rate-limiter grants** (`0x4b46ea82…` and `0x64259f72…` on
 each of the two escrows), driven via
 `RL_GRANTS="cosmoshub-0:0x4b46ea82…,cosmoshub-0:0x64259f72…,ledger-mainnet-1:0x4b46ea82…,ledger-mainnet-1:0x64259f72…"`.
@@ -324,7 +338,7 @@ All 4 grants scheduled, folded via `EXTRA_TIMELOCK_OPS`, the bundle's `safeTxHas
 on-chain `getTransactionHash`, and the atomic `execTransaction` executed (`status 0x1`) for
 **≈ 616,104 gas** (block limit ≈ 60M, so ~1 %). Post-execute: all 4 escrow `setTargetFunctionRole` +
 holder `grantRole` landed. (The earlier single-grant `REHEARSE_RATE_LIMITER_GRANT=1` rehearsal is the
-1-op fallback form.)
+1-op fallback form.) **2026-06-18: `0x64259f72…` dropped (decision #9) → the live bundle is now 8-op/2-grant. Re-rehearsed on a mainnet fork the same day: the 8-op bundle executed `status 0x1` for ≈ 523,273 gas, safeTxHash matched on-chain, both folded grants landed, `addIBCApp` (2-of-5 Safe) + `VerifyDeployment` passed.**
 
 ---
 
@@ -332,11 +346,29 @@ holder `grantRole` landed. (The earlier single-grant `REHEARSE_RATE_LIMITER_GRAN
 
 _Pending. Populate during/after the mainnet run, mirroring the testnet record above:_
 
-- [ ] v3 AccessManager + ICS27GMP deploy addresses & tx hashes
-- [ ] 4 v3 implementation addresses & tx hashes
-- [ ] SP1 v6.1 client deploy addresses & tx hashes (per migrated client); final v6.1 vkeys & the
-      `sp1-programs` tag actually used (decided 2026-06-16: final `v2.0.0` cut at the **same commit
-      as `v2.0.0-rc.2`** → vkeys byte-identical; record which tag string was passed)
+- [x] **v3 AccessManager + ICS27GMP deployed (2026-06-18)** via `deploy-v3-access-manager` (Ledger deployer
+      `0x5622612bF6b4aAadd58Ee7C4680c3207caA6b442`, idx 1). All 6 contracts Etherscan-verified.
+      - AccessManager: `0x3fa3f45acE1645614c80679AeEcE0A82A93c77Ec`
+      - ICS27GMP proxy: `0xbebd14A66052d7dc6BDc05e7328E4fEC0a9e3B0e`
+      - ICS27GMP implementation: `0x75688B39248a0a70549dA82e00FF722EcA91b1c3`
+      - ICS27GMP account implementation: `0x29939DF86144f13FF030c0DCDF2d0D5E362Cf10d`
+      - Deploy tx (`V3AccessManagerBootstrap` CREATE — deploys all of the above in its constructor): `0xb210640a56338eabeab516632731748b7f6501f6c6553a1e4c2401c1fb0db034`
+      - On-chain checks: timelock `ADMIN_ROLE(0)`=true; deployer admin=false (bootstrap renounced); `ICS27GMP.authority()`==AccessManager.
+- [x] **4 v3 implementations deployed (2026-06-18, blocks 25343331–25343387)** via `deploy-implementation` ×4
+      (Ledger `0x5622612b…`). Cross-checked vs broadcast + on-chain code; all distinct from the live v2 impls;
+      written to `1.json`.
+      - ICS26Router impl: `0x17fa3A98D0239a399927C7c3CCdE142e08Deb7B5` (tx `0xf750380446b2061ee6b5a6b89b448177c824570972faa11c306b6829905bfb79`)
+      - ICS20Transfer impl: `0x1ae0b1071a99166248a78e55547b36d44F5B0790` (tx `0x1797ff7524edbfaa40085272f45e0f5043f45becb0ae6d05a4724a3762f0fc0b`)
+      - Escrow impl: `0x5474048d4305f5e588df148380535e4e4df590ad` (tx `0xfba1ae136acb43e8d468a628131e00f8ea0c5403322eb21bd6e347b92a96bc43`)
+      - IBCERC20 impl: `0x0884C7752e8C95A37140A7a07b1fA9b83fD70719` (tx `0xd6365490e98bc0f8d299d2c4469b045cec9e10bd8c09a9397551b24beadf57fe`)
+- [x] **SP1 v6.1 clients deployed (2026-06-18)** — tag **`sp1-programs-v2.0.0`** (`--version v2.0.0`, at the
+      rc.2 commit). vkeys written + assertion-verified == validated set (`updateClient 0x00d38536…`,
+      `membership 0x000bd8ec…`, `ucAndMembership 0x009fe47d…`, `misbehaviour 0x0010008d…`). Fresh trusted
+      state: `cosmoshub-0` rev4/h31633794, `ledger-mainnet-1` rev1/h8325355. New `SP1ICS07Tendermint` (old→new):
+      - `cosmoshub-0`: `0x2e4600f0312D791251821d5b6195c0D8578fa25D` → **`0x4bB8A05D5b40dF7a3B97770E1943461B681B62E9`** (tx `0xffab839b62b878744e1f3a2b719fc4a9af798fdfab9dcb14e5fb526672f1ec6f`)
+      - `ledger-mainnet-1`: `0x279ad6E89DECDf0eBD20050FdD082EE1d20d3E0f` → **`0xD8b2576B0640EfdDe2015Fdc0DD5064f8c067Bf0`** (tx `0xdcc6f941806e801ce24605461faeead39af4b443ce73ce145f17def396978189`)
+      - On-chain verified per client: `getClientState()` + `getConsensusStateHash()` == JSON; all 4 vkeys == v6.1; `VERIFIER()` == gateway.
+      - NOTE: `ledger-mainnet-1` trusted state generated via a **local proxy-backed proof-api** (prod proof-api down + the Lombard empty-User-Agent 403, fixed in solidity-ibc-eureka **PR #1052**). The prod relayer image for step 8a now needs **both** ibc-manifests#91 (/dev/shm) **and** #1052 (User-Agent).
 - [x] `client-4` scope decision — **DROPPED** (not relayed in prod; decided 2026-06-16)
 - [ ] Safe schedule nonces and the atomic `execTransaction` hash
 - [ ] ICS27GMP registration tx; escrow `initializeV2()` txs

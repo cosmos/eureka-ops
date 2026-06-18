@@ -1,7 +1,7 @@
 # Safe signer checklist — v3 upgrade
 
 You sign in the **Safe web UI**: **run one command, confirm the hash matches in three places, sign.** ~2 min each.
-- **Governance-Safe signers:** ~10 "schedule" txs now (one signature each), then **one** "execute" ~3 days later.
+- **Governance-Safe signers:** ~8 "schedule" txs now (one signature each), then **one** "execute" ~3 days later.
 - **Customizer-Safe signers:** **one** tx — the step-8 `addIBCApp`.
 
 > **If the command prints anything but `PASS`, or a hash doesn't match → DO NOT SIGN.**
@@ -10,7 +10,7 @@ You sign in the **Safe web UI**: **run one command, confirm the hash matches in 
 ## Each transaction
 
 1. In the Safe UI, open the pending tx; note its **nonce** (network must be **Ethereum**).
-2. Run (paste the **nonce** and that row's **expected hash** from the table). For the **step-7 execute** also add `--expect-subcalls 10`:
+2. Run (paste the **nonce** and that row's **expected hash** from the table). For the **step-7 execute** also add `--expect-subcalls 8`:
    ```bash
    bash ~/signer-verify.sh 1 ‹SAFE_ADDRESS› ‹NONCE› --expect ‹EXPECTED_SAFETXHASH›
    ```
@@ -47,10 +47,8 @@ The script independently recomputes the hash, so a tampered UI shows as a mismat
 | ‹N+4›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate cosmoshub-0 | `0x…` |
 | ‹N+5›| gov | `0xb3999B2D…` timelock | CALL | schedule migrate ledger-mainnet-1 | `0x…` |
 | ‹N+6›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x4b46ea82…` | `0x…` |
-| ‹N+7›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — cosmoshub-0 / `0x64259f72…` | `0x…` |
-| ‹N+8›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x4b46ea82…` | `0x…` |
-| ‹N+9›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x64259f72…` | `0x…` |
-| ‹X›  | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7), `--expect-subcalls 10`** | `0x…` |
+| ‹N+7›| gov | `0xb3999B2D…` timelock | CALL | grant rate-limiter — ledger-mainnet-1 / `0x4b46ea82…` | `0x…` |
+| ‹X›  | gov | `0x9641d764…` MultiSendCallOnly | **DELEGATECALL** | **atomic upgrade execute (step 7), `--expect-subcalls 8`** | `0x…` |
 | ‹Y›  | cust | `0x3aF13430…` ICS26Router | CALL | addIBCApp gmpport (step 8) | `0x…` |
 
 The **step-7 execute is the only DelegateCall** (and only to `0x9641d764…`); every other tx is a **CALL**.
