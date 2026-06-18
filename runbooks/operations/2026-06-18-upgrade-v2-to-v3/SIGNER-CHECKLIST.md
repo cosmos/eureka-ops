@@ -77,5 +77,4 @@ nothing). The Ledger Domain + Message hash check (step 4) is **required** here.
 ---
 *This round is the 8 schedules only. The atomic **execute** (~3 days later) and the **customizer**
 registration are separate rounds with their own instructions — nothing to do for them now.*
-*Coordinator: generation/distribution in [`CUTOVER-RUNSHEET.md`](CUTOVER-RUNSHEET.md); authoritative
-per-nonce hashes in [`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*
+*Coordinator: authoritative per-nonce hashes in [`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*

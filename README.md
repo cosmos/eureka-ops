@@ -37,7 +37,7 @@ Operator procedures live in [`runbooks/`](./runbooks). Key ones:
 - [`post-upgrade-role-testing.md`](./runbooks/post-upgrade-role-testing.md) — validate & test the v3 `AccessManager` roles after a v2→v3 upgrade (read its *Mainnet adaptation* section before running anything on mainnet).
 - [`upgrade-light-client.md`](./runbooks/upgrade-light-client.md), [`upgrade-ics-20.md`](./runbooks/upgrade-ics-20.md), [`upgrade-ics-26.md`](./runbooks/upgrade-ics-26.md), [`upgrade-escrow.md`](./runbooks/upgrade-escrow.md), [`upgrade-ibcerc20.md`](./runbooks/upgrade-ibcerc20.md) — routine single-contract upgrades.
 - [`pause.md`](./runbooks/pause.md), [`recover-expired-light-client.md`](./runbooks/recover-expired-light-client.md), [`env-setup.md`](./runbooks/env-setup.md).
-- **Operations log:** [`runbooks/operations/`](./runbooks/operations) — one folder per executed operation; each has a `RECORD.md` (addresses, tx hashes, findings). See [`2026-06-18-upgrade-v2-to-v3/RECORD.md`](./runbooks/operations/2026-06-18-upgrade-v2-to-v3/RECORD.md) for the v2→v3 record.
+- **Operations log:** [`runbooks/operations/`](./runbooks/operations) — one folder per executed operation; each typically has a `RECORD.md` (addresses, tx hashes, findings). See [`2026-06-18-upgrade-v2-to-v3/SIGNER-CHECKLIST.md`](./runbooks/operations/2026-06-18-upgrade-v2-to-v3/SIGNER-CHECKLIST.md) for the v2→v3 signer checklist.
 
 ### Role discovery & validation scripts
 
