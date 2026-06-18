@@ -170,14 +170,23 @@ else
   signature="$(cast wallet sign "${hw_args[@]}" --no-hash "$safe_tx_hash")"
 fi
 
-# Best-effort: confirm the signer is an owner and surface the on-chain nonce (proposing as a non-owner is
-# rejected by the service, but failing early is friendlier).
+# Confirm the signer is allowed to propose, and surface the on-chain nonce. The service accepts a proposal
+# from a Safe OWNER or from a registered DELEGATE of that Safe (a delegate may propose but never counts
+# toward the signing threshold); anything else the service rejects, so fail early. Failing closed: if the
+# delegate lookup can't be made, a non-owner is refused.
 if [ -n "$rpc" ]; then
   owners="$(cast call "$safe" 'getOwners()(address[])' --rpc-url "$rpc" 2>/dev/null || true)"
   if [ -n "$owners" ] && ! printf '%s' "$owners" | grep -qi "${sender#0x}"; then
-    echo "refusing to propose: signer $sender is not an owner of Safe $safe" >&2
-    echo "owners: $owners" >&2
-    exit 1
+    # Not an owner -> allow only if a registered delegate of this Safe on the tx service.
+    delresp="$(curl_auth -sSL "$service/api/v2/delegates/?safe=$safe_cs" 2>/dev/null || true)"
+    if printf '%s' "$delresp" | jq -e --arg s "$sender" \
+         '[.results[]?.delegate // empty | ascii_downcase] | index(($s|ascii_downcase))' >/dev/null 2>&1; then
+      echo "note: $sender is not an owner but IS a registered delegate of Safe $safe_cs — proposing as delegate (no threshold weight)." >&2
+    else
+      echo "refusing to propose: signer $sender is neither an owner nor a registered delegate of Safe $safe" >&2
+      echo "owners: $owners" >&2
+      exit 1
+    fi
   fi
   onchain_nonce="$(cast call "$safe" 'nonce()(uint256)' --rpc-url "$rpc" 2>/dev/null | awk '{print $1}' || echo '?')"
 else
