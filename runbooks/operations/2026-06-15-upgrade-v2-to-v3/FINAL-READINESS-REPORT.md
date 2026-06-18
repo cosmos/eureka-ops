@@ -58,8 +58,9 @@ escrow is still upgraded). Rate-limiter holders re-granted: `0x4b46ea82…`, `0x
 - **Decisions locked** (see below).
 - **Tooling built + validated:** Ledger proposer signing, packer schedule-state guard, admin-revoke guard,
   signer verification tool + checklist, trust-root assertion script, role validators.
-- **Rehearsed on a mainnet fork:** the core timelock path, a staged-v6.1 variant, and the **exact 10-op
-  fold** (≈ 616k gas).
+- **Rehearsed on a mainnet fork:** the core timelock path, a staged-v6.1 variant, the **exact 10-op
+  fold** (≈ 616k gas), and the **2-of-5 customizer-Safe `addIBCApp`** registration via the real
+  `execTransaction` (not an EOA broadcast) — `getIBCApp(gmpport)` lands and `VerifyDeployment` passes.
 
 ## Independently verified — solid, no change needed
 
