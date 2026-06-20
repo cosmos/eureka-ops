@@ -51,4 +51,4 @@ Every tx this round is a **CALL to the timelock** `0xb3999B2D…`. The script re
 If the script can't find the table (you're running it outside the repo), point it at the file: `bash scripts/signer-verify.sh <NONCE> --table runbooks/operations/2026-06-18-upgrade-v2-to-v3/COORDINATOR-HASH-TABLE.md`.
 
 ---
-*This validates the 8 schedule transactions only (nonces 18–25). Authoritative per-nonce hashes + payloads: [`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*
+*This validates the 8 schedule transactions only (nonces 18–25). The later **execute / cutover** transaction (nonce 26) has its own checklist: [`SIGNER-CHECKLIST-EXECUTE.md`](SIGNER-CHECKLIST-EXECUTE.md). Authoritative per-nonce hashes + payloads: [`COORDINATOR-HASH-TABLE.md`](COORDINATOR-HASH-TABLE.md).*
