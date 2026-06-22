@@ -374,6 +374,22 @@ EXTRA_TIMELOCK_OPS='…' REQUIRE_READY=1 \
 --expect-subcalls 8` (4 upgrades + 2 migrations + 2 rate-limiter). Atomic + ordered (ICS20 before ICS26) — if
 any sub-execute reverts, nothing lands.
 
+> **Execute via the Safe UI / device Execute button — don't hand-assemble.** The UI sorts the collected
+>
+> signatures ascending for you; a manual `cast send execTransaction` with a non-ascending signature blob
+>
+> reverts `GS026` (recoverable — a revert does not consume nonce 26, but avoid the footgun). Keep the
+>
+> nonce-26 object as-is and collect 4-of-7 on it — **never re-propose** (the `REQUIRE_READY=1` rebuild above is
+>
+> the ready-assert only, byte-identical, not a new proposal). **In the minutes before you click Execute,**
+>
+> re-query all 8 sub-ops once more — each `isOperationPending == true` and `getTimestamp == 1782217319` — and
+>
+> freeze any other gov-Safe proposal during the window: the gov Safe holds `CANCELLER`, so a stray 4-of-7
+>
+> cancel would atomically void the bundle (→ a fresh 72 h round).
+
 > **Fork-validated (2026-06-20) — the real nonce-26 bundle, current mainnet state.** Forked mainnet at the
 >
 > current block (the 8 real ops pending), warped **+72 h**, and executed the **exact** nonce-26 bundle through
