@@ -29,6 +29,21 @@ To see available recipes, run:
 just --list
 ```
 
+## Runbooks
+
+Operator procedures live in [`runbooks/`](./runbooks). Key ones:
+
+- [`upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md) — the canonical v2→v3 core upgrade + SP1 v6.1 migration (steps 1–13). **Single source of truth for that operation.**
+- [`post-upgrade-role-testing.md`](./runbooks/post-upgrade-role-testing.md) — validate & test the v3 `AccessManager` roles after a v2→v3 upgrade (read its *Mainnet adaptation* section before running anything on mainnet).
+- [`upgrade-light-client.md`](./runbooks/upgrade-light-client.md), [`upgrade-ics-20.md`](./runbooks/upgrade-ics-20.md), [`upgrade-ics-26.md`](./runbooks/upgrade-ics-26.md), [`upgrade-escrow.md`](./runbooks/upgrade-escrow.md), [`upgrade-ibcerc20.md`](./runbooks/upgrade-ibcerc20.md) — routine single-contract upgrades.
+- [`pause.md`](./runbooks/pause.md), [`recover-expired-light-client.md`](./runbooks/recover-expired-light-client.md), [`env-setup.md`](./runbooks/env-setup.md).
+- **Operations log:** [`runbooks/operations/`](./runbooks/operations) — one folder per executed operation; each typically has a `RECORD.md` (addresses, tx hashes, findings). See [`2026-06-18-upgrade-v2-to-v3/SIGNER-CHECKLIST.md`](./runbooks/operations/2026-06-18-upgrade-v2-to-v3/SIGNER-CHECKLIST.md) for the v2→v3 signer checklist.
+
+### Role discovery & validation scripts
+
+- [`scripts/discover-v2-roles.py`](./scripts/discover-v2-roles.py) — **pre-cutover**: enumerate the live v2 role grants (via Etherscan logs) and reconcile against the deployment JSON, so you build the exact grant set (incl. the `RATE_LIMITER` re-grant set) the upgrade must carry. Needs `ETH_RPC` + `ETHERSCAN_API_KEY`.
+- [`scripts/validate-v3-roles.py`](./scripts/validate-v3-roles.py) — **post-cutover**: independently validate every v3 `AccessManager` (target,selector)→role, exact role membership, and `authority()` wiring on-chain. Needs `ETH_RPC`.
+
 ## Manual verification instructions
 
 Any on-chain verification that is not implemented as recipes yet should be documented below:
@@ -46,6 +61,35 @@ To verify that the Ethereum Light on the hub is running a specific version of th
 4. Verify that the output from step 2 matches the output from step 3
 
 ## Recipes
+
+### Shadow fork v2-to-v3 rehearsal
+
+To rehearse the v2-to-v3 upgrade (including the SP1 light-client migrations) against uncommitted local changes, start an Anvil fork in one terminal:
+
+```bash
+export SEPOLIA_RPC=<SEPOLIA_RPC_URL>
+just shadow-start-sepolia
+```
+
+Then run the rehearsal in another terminal:
+
+```bash
+just shadow-v2-to-v3-sepolia-with-sp1
+```
+
+The SP1 clients to migrate are read from the deployment JSON (`.light_clients[].clientId`), so there is nothing to type, and the rehearsal writes only to ignored `deployments/shadow-*` copies. Use `MAINNET_RPC` with `just shadow-start-mainnet` and `just shadow-v2-to-v3-mainnet-with-sp1` for Ethereum mainnet. To additionally exercise the real `TimelockController` + atomic Safe MultiSend path, use `just shadow-v2-to-v3-sepolia-timelock`. See [`runbooks/upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md) for the full flow.
+
+### Fresh v3 core deployment
+
+For a new v3 deployment where `accessManager`, `ics26Router`, and `ics20Transfer` addresses are still zero in the deployment JSON, deploy the core contracts with:
+
+```bash
+just deploy-v3-core
+```
+
+This deploys the `AccessManager`, `ICS26Router`, `ICS20Transfer`, `ICS27GMP`, `ICS27Account`, `Escrow`, and `IBCERC20` implementations, registers the transfer and GMP apps on the router, configures the v3 target function roles, grants the configured relayer/pauser/unpauser/delegate-sender/customizer roles, and writes the deployed addresses back to `deployments/<environment>/<chain_id>.json`.
+
+The script temporarily uses the broadcast account as the `AccessManager` admin during deployment, then hands admin control to the configured `.accessManagerRoles.admin`. The configured admin can be an EOA, Safe, or timelock.
 
 ### Deploy light client implementation for migration/upgrade
 
@@ -82,26 +126,20 @@ The implementation address will be updated in the deployment JSON entry for the 
 
 After the timelock delay has passed, do the above steps again but replace `schedule` with `execute`
 
-### Updating IBCERC20 Metadata
+### IBCERC20 Metadata
 
-> ⚠️ Only a wallet with the Token Operator role is able to update the IBCERC20 Metadata
-
-To update the Metadata for an IBCERC20 contract, you need to do the following:
-1. Grant the metadata role for the IBCERC20 contract with:
-    ```bash
-    just ops-grant-metadata-role # You will be prompted for the IBCERC20 Address and the address of the grantee
-    ```
-2. Set the metadata:
-    ```bash
-    just ops-set-metadata # You will be prompted for the IBCERC20 Address to update and the values to set
-    ```
+IBCERC20 metadata customization was removed in solidity-ibc-eureka v3. Prefer custom ERC20s through the custom ERC20 flow instead of post-deployment IBCERC20 metadata changes.
 
 ### Upgrade a contract that is behind a proxy
 
-Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (ICS26Router for instance).
+> [!IMPORTANT]
+> This is for **routine** UUPS upgrades **after** the v2-to-v3 migration. It performs an `upgradeToAndCall` with **empty** calldata, so it does **not** call `initializeV2`. Do **not** use it to perform the v2-to-v3 core upgrades — use `schedule-v3-*`/`execute-v3-*-upgrade-params` (see [`runbooks/upgrade-v2-to-v3.md`](./runbooks/upgrade-v2-to-v3.md)), which call `initializeV2(accessManager)`. As a guard, `timelock-upgrade-proxy` refuses to upgrade `ICS26Router`/`ICS20Transfer` when the deployment records an `accessManager` but the proxy is not yet AccessManaged by it.
+
+Modify one (and only one at the time) of the `implementation` values in the deployment json for one of the ERC1967Proxy contracts (`ICS26Router`, `ICS20Transfer`, or `ICS27GMP`).
 
 Run the script to generate the information needed to submit a proposal to the Safe Wallet:
 ```bash
 just timelock-upgrade-proxy
 ```
 
+The beacon implementations have their own param recipes: `schedule-escrow-upgrade-params`, `schedule-ibcerc20-upgrade-params`, and `schedule-ics27account-upgrade-params` (plus the matching `execute-*`).

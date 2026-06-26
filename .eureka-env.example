@@ -27,5 +27,5 @@ ETHERSCAN_API_KEY=0000000000000000000000000000000000
 # zk algorithm for the generated client state; MUST match the existing client (groth16 or plonk)
 # PROOF_TYPE=groth16
 
-# Gnosis Safe that holds PROPOSER on the timelock (used by the safe.just hash recipes)
-# SAFE_ADDRESS=0x0000000000000000000000000000000000000000
+# The Gnosis Safe that holds PROPOSER/EXECUTOR on the timelock is configured per-deployment in
+# deployments/<env>/<chain>.json under the ".safe" key (no env var needed).

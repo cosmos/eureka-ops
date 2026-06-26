@@ -74,10 +74,9 @@ SENDER=0x...
 SRC_CHAIN=<cosmos-chain-id>
 DST_CHAIN=<eth-chain-id>       # decimal chain id, e.g. 11155111 for Sepolia
 PROOF_TYPE=groth16            # MUST match the existing client's zk algorithm
-
-# Step 3 Safe (the Safe that holds PROPOSER on the timelock):
-SAFE_ADDRESS=0x...
 ```
+
+The Safe that holds `PROPOSER` on the timelock (step 3) is read from the deployment JSON's `.safe` key, so it needs no `.eureka-env` entry.
 
 > [!WARNING]
 > ⚠️ **`PRIVATE_KEY` footgun:** setting it to *any* value (even zeros) makes the recipes use `--private-key` instead of the Ledger. Leave it commented to use a Ledger.
@@ -131,9 +130,11 @@ just deploy-light-client      # enter the client ID, confirm "deploy a copy" wit
 ```
 This deploys a new `SP1ICS07Tendermint` with the fresh state from step 1, **reusing** the existing vkeys + verifier, and writes the new `implementation` (and `verifier`) into the deployment JSON.
 
-### ⚠️ Gotcha: OpenZeppelin version pin
+### ⚠️ Gotcha: compile against the version the client was deployed from
 > [!IMPORTANT]
-> The `solidity-v2.0.0` contracts import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin **removed from `@openzeppelin/contracts-upgradeable` after 5.4.0**. Both `@openzeppelin/contracts` and `@openzeppelin/contracts-upgradeable` are therefore pinned to exactly **`5.4.0`** in `package.json` (the newest version that still ships that file). Don't loosen them to a range — `^5.3.x` floats to 5.5+ and the build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*. If you hit that error, your `node_modules` floated past the pin; re-run `bun install`.
+> `package.json` on `main` now pins `@cosmos/solidity-ibc-eureka` to a **v3** tag (`solidity-v3.0.1`) and `@openzeppelin/contracts*` to `5.6.1`, and `script/helpers/SP1ICS07TendermintDeployer.sol` imports the **SP1 v6.1** verifiers. Deploying a recovery client from this checkout produces a **v3 / SP1 v6.1** `SP1ICS07Tendermint`. That is correct only if the chain you are recovering is already on v3 / SP1 v6.1.
+>
+> If you are recovering a client on a **still-v2** chain, a v3 / SP1 v6.1 client will not verify proofs produced by a v2-era proof-api (vkey/verifier mismatch) and the client stays unrecoverable. Before running `just deploy-light-client`, check out the `@cosmos/solidity-ibc-eureka` (and matching `@openzeppelin/contracts*`) versions the **deployed** client was built from — confirm against the live contract per §2 — and `bun install` so `node_modules` matches that version. Older `solidity-v2.x` checkouts pinned `@openzeppelin/contracts*` to `5.4.0` because they import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin removed after 5.4.0; if a v2 build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*, your `node_modules` floated past that pin — re-run `bun install` on the v2 checkout.
 
 ### Verify
 ```
@@ -155,8 +156,8 @@ cast call <router> 'migrateClient(string,(string,bytes[]),address)' <clientId> "
 ```
 If instead an EOA holds the role, use the direct `just ops-migrate-light-client` and skip the Safe ceremony.
 
-### 8b. `SAFE_ADDRESS` must point at the real Safe
-`safe.just`'s `safe_address` is `env_var_or_default("SAFE_ADDRESS", <default>)`. The default is a mainnet Safe; **set `SAFE_ADDRESS` in `.eureka-env`** to the Safe that actually holds `PROPOSER` on your timelock, or the hash-verification recipes will compute against the wrong Safe.
+### 8b. The Safe address comes from the deployment JSON
+`safe.just`'s `safe_address` is read from `deployments/<env>/<chain>.json` under the `.safe` key (the Safe that holds `PROPOSER` on your timelock). Make sure that key is set for the environment you are operating on, or the hash-verification recipes will fail loudly rather than computing against the wrong Safe.
 
 ### 8c. Generate, verify, submit
 Run in a **real terminal** (the recipe's `forge` step uses `vm.prompt`, which needs a TTY — it can't be piped):
@@ -201,7 +202,7 @@ Must return the **new** implementation address. Then:
 ## 10. Key files
 
 - `deploy.just` — `deploy-fresh-light-client-state` (proof-api), `deploy-light-client`, `timelock-migrate-light-client`.
-- `safe.just` — `SAFE_ADDRESS`, `get_safe_hashes`.
+- `safe.just` — reads the Safe from the deployment JSON (`.safe`), `get_safe_hashes`.
 - `script/helpers/decode_create_client.py` — version-independent decoder for the proof-api `CreateClient` calldata.
 - `script/DeploySP1ICS07Tendermint.sol`, `script/MigrateLightClient.sol`.
 - `deployments/<env>/<chainId>.json` — the deployment state.

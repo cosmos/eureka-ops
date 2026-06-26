@@ -1,0 +1,4 @@
+# Keep shell scripts LF so a Windows `git checkout` (e.g. signers in WSL) can run them, and keep the
+# signer hash-table LF so signer-verify.sh parses its payload rows byte-for-byte.
+*.sh text eol=lf
+runbooks/operations/2026-06-18-upgrade-v2-to-v3/COORDINATOR-HASH-TABLE.md text eol=lf

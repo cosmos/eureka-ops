@@ -6,27 +6,27 @@ import "forge-std/console.sol";
 import { Script } from "forge-std/Script.sol";
 import { Deployments } from "./helpers/Deployments.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
-import { ICS20Transfer } from "solidity-ibc-eureka/contracts/ICS20Transfer.sol";
-import { Escrow } from "solidity-ibc-eureka/contracts/utils/Escrow.sol"; 
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { TimelockController } from "@openzeppelin-contracts/governance/TimelockController.sol";
 
 library ScriptHelperConstants {
-     string public constant ICS26_ROUTER_NAME = "ICS26Router";
-     string public constant ICS20_TRANSFER_NAME = "ICS20Transfer";
-     string public constant ESCROW_NAME = "Escrow";
-     string public constant IBCERC20_NAME = "IBCERC20";
+    string public constant ICS26_ROUTER_NAME = "ICS26Router";
+    string public constant ICS20_TRANSFER_NAME = "ICS20Transfer";
+    string public constant ICS27_GMP_NAME = "ICS27GMP";
+    string public constant ICS27_ACCOUNT_NAME = "ICS27Account";
+    string public constant ESCROW_NAME = "Escrow";
+    string public constant IBCERC20_NAME = "IBCERC20";
 }
 
 contract GenerateScriptHelperJSON is Script, Deployments {
     using stdJson for string;
 
-
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         bytes memory preCalldata = vm.envOr("PRE_CALLDATA", bytes(""));
@@ -38,41 +38,46 @@ contract GenerateScriptHelperJSON is Script, Deployments {
             require(success, "Pre-call failed");
         }
 
-
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
-        SP1ICS07TendermintDeployment[] memory lightClientDeployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
         ProxiedICS20TransferDeployment memory ics20TransferDeployment = loadProxiedICS20TransferDeployment(vm, json);
+        ICS27GMPDeployment memory ics27GmpDeployment = loadICS27GMPDeployment(json);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
 
-        ICS26Router ics26Router = ICS26Router(ics26RouterDeployment.proxy);
-        ICS20Transfer ics20Transfer = ICS20Transfer(ics20TransferDeployment.proxy);
-
-        // These keys are not used in the JSON output itself, but are used to keep track of the internal structure created by the `serialize*` functions.
+        // These keys are not used in the JSON output itself, but are used to keep track of the internal structure
+        // created by the `serialize*` functions.
         string memory deploymentsKey = "deploymentsKey";
         string memory settingsKey = "settingsKey";
         string memory ics26Key = "ics26Key";
         string memory ics26RolesKey = "ics26RolesKey";
         string memory ics20Key = "ics20Key";
         string memory ics20RolesKey = "ics20RolesKey";
+        string memory accessManagerKey = "accessManagerKey";
+        string memory accessManagerRolesKey = "accessManagerRolesKey";
 
         // Settings
         bool isTimelockController = false;
-        // If the address is an EOA, the code length will be 0. Otherwise, we can assume it's a timelock controller.
-        if (ics26RouterDeployment.timelockAdmin.code.length != 0) {
-            isTimelockController = true;
-
-            TimelockController timelockController = TimelockController(payable(ics26RouterDeployment.timelockAdmin));
-            uint256 delay = timelockController.getMinDelay();
-            vm.serializeUint(settingsKey, "timelock_delay", delay);
-
+        // An EOA admin has no code. A contract admin may be a TimelockController, but it may also be a Safe or
+        // other contract that has no getMinDelay() (the README documents EOA/Safe/timelock as supported admins).
+        // Probe getMinDelay() defensively so a Safe admin records admin_is_timelock_controller=false instead of
+        // reverting and breaking every recipe that depends on the script helper.
+        if (accessManagerDeployment.admin.code.length != 0) {
+            try TimelockController(payable(accessManagerDeployment.admin)).getMinDelay() returns (uint256 delay) {
+                isTimelockController = true;
+                vm.serializeUint(settingsKey, "timelock_delay", delay);
+            } catch {
+                isTimelockController = false;
+            }
         }
         string memory settings = vm.serializeBool(settingsKey, "admin_is_timelock_controller", isTimelockController);
 
         // Implementations
-        string[] memory implementations = new string[](4);
+        string[] memory implementations = new string[](6);
         implementations[0] = ScriptHelperConstants.ICS26_ROUTER_NAME;
         implementations[1] = ScriptHelperConstants.ICS20_TRANSFER_NAME;
         implementations[2] = ScriptHelperConstants.ESCROW_NAME;
         implementations[3] = ScriptHelperConstants.IBCERC20_NAME;
+        implementations[4] = ScriptHelperConstants.ICS27_GMP_NAME;
+        implementations[5] = ScriptHelperConstants.ICS27_ACCOUNT_NAME;
 
         // Deployed Contracts
 
@@ -81,32 +86,44 @@ contract GenerateScriptHelperJSON is Script, Deployments {
         vm.serializeBool(ics26Key, "uups_upgradeable", true);
 
         string memory ics26Roles;
-        vm.serializeBytes32(ics26RolesKey, "Client ID Customizer role", ics26Router.CLIENT_ID_CUSTOMIZER_ROLE());
-        vm.serializeBytes32(ics26RolesKey, "Port Customizer role", ics26Router.PORT_CUSTOMIZER_ROLE());
-        vm.serializeBytes32(ics26RolesKey, "Relayer role", ics26Router.RELAYER_ROLE());
-
-        for (uint256 i = 0; i < lightClientDeployments.length; i++) {
-            bytes32 role = ics26Router.getLightClientMigratorRole(lightClientDeployments[i].clientId);
-            ics26Roles = vm.serializeBytes32(ics26RolesKey, string.concat("Light Client Migrator role: ", lightClientDeployments[i].clientId), role);
-        }
+        vm.serializeUint(ics26RolesKey, "ID Customizer role", IBCRolesLib.ID_CUSTOMIZER_ROLE);
+        ics26Roles = vm.serializeUint(ics26RolesKey, "Relayer role", IBCRolesLib.RELAYER_ROLE);
         string memory ics26Json = vm.serializeString(ics26Key, "roles", ics26Roles);
 
         // ICS20
         vm.serializeAddress(ics20Key, "contract_address", ics20TransferDeployment.proxy);
         vm.serializeBool(ics20Key, "uups_upgradeable", true);
 
-        vm.serializeBytes32(ics20RolesKey, "Pauser role", ics20Transfer.PAUSER_ROLE());
-        vm.serializeBytes32(ics20RolesKey, "Unpauser role", ics20Transfer.UNPAUSER_ROLE());
-        vm.serializeBytes32(ics20RolesKey, "Token Operator role", ics20Transfer.TOKEN_OPERATOR_ROLE());
-        ICS20Transfer newIcs20Transfer = new ICS20Transfer();
-        vm.serializeBytes32(ics20RolesKey, "ERC20 Customizer role", newIcs20Transfer.ERC20_CUSTOMIZER_ROLE());
-        
-        string memory ics20Roles = vm.serializeBytes32(ics20RolesKey, "Delegate Sender role", ics20Transfer.DELEGATE_SENDER_ROLE());
+        vm.serializeUint(ics20RolesKey, "Pauser role", IBCRolesLib.PAUSER_ROLE);
+        vm.serializeUint(ics20RolesKey, "Unpauser role", IBCRolesLib.UNPAUSER_ROLE);
+        vm.serializeUint(ics20RolesKey, "ERC20 Customizer role", IBCRolesLib.ERC20_CUSTOMIZER_ROLE);
+        string memory ics20Roles =
+            vm.serializeUint(ics20RolesKey, "Delegate Sender role", IBCRolesLib.DELEGATE_SENDER_ROLE);
         string memory ics20Json = vm.serializeString(ics20Key, "roles", ics20Roles);
+
+        // ICS27
+        string memory ics27Key = "ics27Key";
+        string memory ics27RolesKey = "ics27RolesKey";
+        vm.serializeAddress(ics27Key, "contract_address", ics27GmpDeployment.proxy);
+        vm.serializeBool(ics27Key, "uups_upgradeable", true);
+
+        vm.serializeUint(ics27RolesKey, "Pauser role", IBCRolesLib.PAUSER_ROLE);
+        string memory ics27Roles = vm.serializeUint(ics27RolesKey, "Unpauser role", IBCRolesLib.UNPAUSER_ROLE);
+        string memory ics27Json = vm.serializeString(ics27Key, "roles", ics27Roles);
+
+        vm.serializeAddress(accessManagerKey, "contract_address", accessManagerDeployment.accessManager);
+        vm.serializeUint(accessManagerRolesKey, "Admin role", IBCRolesLib.ADMIN_ROLE);
+        // RATE_LIMITER_ROLE is a manager-wide role granted via grant-rate-limiter-role; listing it here gives
+        // ops-revoke-role / timelock-grant-role a scripted path to manage it (otherwise it could not be revoked).
+        string memory accessManagerRoles =
+            vm.serializeUint(accessManagerRolesKey, "Rate Limiter role", IBCRolesLib.RATE_LIMITER_ROLE);
+        string memory accessManagerJson = vm.serializeString(accessManagerKey, "roles", accessManagerRoles);
 
         // Collect deployments
         vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS26_ROUTER_NAME, ics26Json);
-        string memory deployments = vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS20_TRANSFER_NAME, ics20Json);
+        vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS20_TRANSFER_NAME, ics20Json);
+        vm.serializeString(deploymentsKey, ScriptHelperConstants.ICS27_GMP_NAME, ics27Json);
+        string memory deployments = vm.serializeString(deploymentsKey, "AccessManager", accessManagerJson);
 
         vm.serializeString("root", "settings", settings);
         vm.serializeString("root", "implementations", implementations);

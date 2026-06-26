@@ -4,30 +4,52 @@ pragma solidity ^0.8.28;
 import "forge-std/console.sol";
 
 import { Script } from "forge-std/Script.sol";
+import { VmSafe } from "forge-std/Vm.sol";
 import { Deployments } from "./helpers/Deployments.sol";
+import { AccessManager } from "@openzeppelin-contracts/access/manager/AccessManager.sol";
+import { IAccessManager } from "@openzeppelin-contracts/access/manager/IAccessManager.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
-import { ICS26Router } from "solidity-ibc-eureka/contracts/ICS26Router.sol";
+import { IBCRolesLib } from "solidity-ibc-eureka/contracts/utils/IBCRolesLib.sol";
 
 /// @dev See the Solidity Scripting tutorial: https://book.getfoundry.sh/guides/scripting-with-solidity
 contract ReplaceTimelockAdmin is Script, Deployments {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         address newTimelockAdmin = vm.promptAddress("New timelock admin");
 
-        ProxiedICS26RouterDeployment memory deployment = loadProxiedICS26RouterDeployment(vm, json);
-        ICS26Router ics26Router = ICS26Router(deployment.proxy);
+        AccessManagerDeployment memory accessManagerDeployment = loadAccessManagerDeployment(json);
+        vm.assertNotEq(accessManagerDeployment.accessManager, address(0), "AccessManager address must not be zero");
+        vm.assertNotEq(newTimelockAdmin, address(0), "New timelock admin must not be zero");
+        vm.assertNotEq(newTimelockAdmin, accessManagerDeployment.admin, "New timelock admin must be different");
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(IAccessManager.grantRole, (IBCRolesLib.ADMIN_ROLE, newTimelockAdmin, 0));
+        calls[1] = abi.encodeCall(IAccessManager.revokeRole, (IBCRolesLib.ADMIN_ROLE, accessManagerDeployment.admin));
 
         vm.startBroadcast();
+        (, address sender,) = vm.readCallers();
+        _requireAccessManagerAdmin(accessManagerDeployment.accessManager, sender);
 
-        ics26Router.setTimelockedAdmin(newTimelockAdmin);
+        AccessManager(accessManagerDeployment.accessManager).multicall(calls);
 
         vm.stopBroadcast();
 
-        // Update the deployment JSON
-        vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".ics26Router.timelockAdmin");
+        // Only update the deployment JSON on an actual broadcast (the EOA-admin `deploy-replace-timelock-admin`
+        // flow). The timelock flow runs this script as a dry-run to generate schedule/execute calldata; writing
+        // then would record the new admin before the on-chain change lands, breaking the later execute leg
+        // (the `New timelock admin must be different` assert would trip and the sender would resolve wrongly).
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".ics26Router.timelockAdmin");
+            vm.writeJson(vm.toString(address(newTimelockAdmin)), path, ".accessManagerRoles.admin");
+        } else {
+            console.log("Dry run: deployment JSON not modified.");
+            console.log("After the timelock executes on-chain, set .accessManagerRoles.admin and");
+            console.log(".ics26Router.timelockAdmin to:", vm.toString(address(newTimelockAdmin)));
+        }
     }
 }

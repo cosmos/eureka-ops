@@ -22,7 +22,11 @@ grpcurl_flags := env_var_or_default("GRPCURL_FLAGS", "-plaintext")
 private_key := env_var_or_default("PRIVATE_KEY", _private_key_not_set)
 _wallet_base := if private_key !=  _private_key_not_set { "--private-key " + private_key } else { "--ledger --sender " + sender }
 wallet := if mnemonic_index != "" { _wallet_base + " --mnemonic-indexes " + mnemonic_index } else { _wallet_base }
-_timelock_controller := shell('jq -r ".ics26Router.timelockAdmin" deployments/$1/$2.json', environment, chain)
+# Resolves the AccessManager admin (timelock) from the deployment JSON. Returns empty when the environment/chain
+# are unset (so `just --list` and env-agnostic recipes still work), but fails loudly when they are set yet the
+# deployment file or admin key is missing — rather than silently returning the zero address, which would make
+# recipes compute Safe hashes / use `--sender` against address(0).
+_timelock_controller := shell('if [ -z "$1" ] || [ -z "$2" ]; then echo ""; exit 0; fi; f="deployments/$1/$2.json"; test -f "$f" || { echo "timelock admin lookup failed: $f not found" >&2; exit 1; }; jq -re "(.accessManagerRoles.admin // .ics26Router.timelockAdmin)" "$f" || { echo "timelock admin not set in $f (.accessManagerRoles.admin / .ics26Router.timelockAdmin)" >&2; exit 1; }', environment, chain)
 
 _verify_flags  := "--verify"
 _broadcast_flags := "--broadcast " + _verify_flags + " " + wallet
@@ -45,7 +49,7 @@ info-env:
     echo
     echo "Deployment Settings:"
     echo "IBC Solidity Contracts Version: ${solidity_ver}"
-    echo "TimeLock Controller: {{_timelock_controller}}"
+    echo "AccessManager admin: {{_timelock_controller}}"
     echo "Broadcast Flags: {{_broadcast_flags}}" | sed -e "s/{{private_key}}/***REDACTED***/g"
     echo "Timelock Flags: {{_timelock_flags}}"
 
@@ -55,7 +59,7 @@ info-admin: _generate-script-helper
     set -eou pipefail
     is_timelock=$(jq -r ".settings.admin_is_timelock_controller" out/scriptHelper.json)
     echo "Admin Information for {{environment}} on {{chain}}:"
-    echo "Admin address (ics26Router.timelockAdmin): {{_timelock_controller}}"
+    echo "AccessManager admin address: {{_timelock_controller}}"
     echo "Admin is Timelock Controller script: $is_timelock"
 
 [group('info')]
@@ -68,8 +72,8 @@ info-timelock:
     echo "Target: 'to' from timelock script output"
     echo "Value: 0"
     echo "Data: 'input' from timelock script output"
-    echo "Predecessor: 0x"
-    echo "Salt: 0x"
+    echo "Predecessor: {{zero_bytes32}}"
+    echo "Salt: {{zero_bytes32}}"
     echo "Delay: $(jq -r ".settings.timelock_delay" out/scriptHelper.json)"
 
 [group('utils')]
@@ -90,6 +94,15 @@ _build: && _generate-script-helper
 _confirm-settings script_flags:
     #!/bin/bash
     set -eou pipefail
+    # Mainnet hot-key guard: a set PRIVATE_KEY makes broadcast recipes sign with that hot key instead of the
+    # Ledger (see `wallet` above). On mainnet (chain 1) that must never happen silently — refuse and require
+    # an explicit override. Mainnet deploys use --ledger; the Safe/timelock paths don't use `wallet` at all.
+    if [ "{{chain}}" = "1" ] && [ -n "${PRIVATE_KEY:-}" ]; then
+        echo "REFUSING: PRIVATE_KEY is set on mainnet (EUREKA_CHAIN=1) — a hot key would sign this broadcast" >&2
+        echo "instead of the Ledger. Unset PRIVATE_KEY and use --ledger (see runbook 'Signing'). To truly" >&2
+        echo "intend a hot-key mainnet broadcast, set ALLOW_MAINNET_PRIVATE_KEY=1." >&2
+        [ "${ALLOW_MAINNET_PRIVATE_KEY:-}" = "1" ] || exit 1
+    fi
     echo "You are about to run a script with the following settings:"
     just info-env
     echo
@@ -209,22 +222,28 @@ deploy-timelock-controller: (_pre-script _broadcast_flags)
     forge script script/DeployTimelockController.sol -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics26-router: (_pre-script _broadcast_flags)
+deploy-v3-access-manager: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    forge script script/DeployProxiedICS26Router.sol -vvvv {{_broadcast_flags}}
+    forge script script/DeployV3AccessManager.sol:DeployV3AccessManager -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
-deploy-ics20-transfer: (_pre-script _broadcast_flags)
+deploy-v3-core: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    forge script script/DeployProxiedICS20Transfer.sol -vvvv {{_broadcast_flags}}
+    forge script script/DeployV3Core.sol:DeployV3Core -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
 deploy-light-client: (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
     forge script script/DeploySP1ICS07Tendermint.sol -vvvv {{_broadcast_flags}}
+
+[group('deploy')]
+register-ics27-gmp: (_pre-script _broadcast_flags)
+    #!/bin/bash
+    set -euo pipefail
+    forge script script/RegisterICS27GMP.sol:RegisterICS27GMP -vvvv {{_broadcast_flags}}
 
 [group('deploy')]
 deploy-update-light-client-state:
@@ -246,11 +265,20 @@ deploy-fresh-light-client-state:
     command -v grpcurl >/dev/null || { echo "grpcurl not found (needed to call the proof-api)"; exit 1; }
     command -v python3 >/dev/null || { echo "python3 not found (needed to decode the response)"; exit 1; }
 
-    read -rp "Client ID to generate fresh state for: " client_id
+    client_id="${CLIENT_ID:-}"
+    [ -n "$client_id" ] || read -rp "Client ID to generate fresh state for: " client_id
     entry=$(jq -c --arg cid "$client_id" '.light_clients | to_entries[] | select(.value.clientId==$cid)' "$deployment_file")
     test -n "$entry" || { echo "Client ID '$client_id' not found in $deployment_file"; exit 1; }
     idx=$(jq -r '.key' <<<"$entry")
     echo "Found '$client_id' at light_clients[\"$idx\"]"
+    # Guard against a swapped client/source pair (prompt vs stale env): if the client records its proof-api
+    # source, SRC_CHAIN must match, else we'd silently write another source's trusted state into this client.
+    expected_src=$(jq -r '.value.proofApiSrcChain // empty' <<<"$entry")
+    if [ -n "$expected_src" ] && [ "$expected_src" != "{{src_chain}}" ]; then
+      echo "REFUSING: client '$client_id' expects proof-api source '$expected_src' but SRC_CHAIN='{{src_chain}}'." >&2
+      echo "That would write '{{src_chain}}' trusted state into the '$client_id' entry. Fix SRC_CHAIN (or .proofApiSrcChain)." >&2
+      exit 1
+    fi
 
     # Discover the gRPC service via reflection unless one was provided (relayer.RelayerService on v0.7.x, proofapi.ProofApiService on v0.8.x)
     service="{{proofapi_service}}"
@@ -319,15 +347,6 @@ deploy-replace-timelock-admin: (_pre-script _broadcast_flags)
 ops-grant-rate-limiter-role: (ops-script "GrantRateLimiterRole" _broadcast_flags)
 
 [group('ops')]
-ops-grant-metadata-role: (ops-script "GrantMetadataRole" _broadcast_flags)
-
-[group('ops')]
-ops-revoke-metadata-role: (ops-script "RevokeMetadataRole" _broadcast_flags)
-
-[group('ops')]
-ops-set-metadata: (ops-script "SetTokenMetadata" _broadcast_flags)
-
-[group('ops')]
 ops-grant-role: _generate-script-helper (_pre-script _broadcast_flags) (_grant-role _broadcast_flags)
 
 [group('ops')]
@@ -346,11 +365,10 @@ ops-migrate-light-client: (ops-script "MigrateLightClient" _broadcast_flags)
 ops-revoke-role: _generate-script-helper (_pre-script _broadcast_flags)
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf)
-    export REVOKE_ROLE=$(jq -r "deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Revoking role $role_key ($REVOKE_ROLE) on $contract ($REVOKE_CONTRACT_ADDRESS)"
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to revoke")
+    export REVOKE_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Revoking role $role_key ($REVOKE_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     forge script script/RevokeRole.sol -vvvv {{_broadcast_flags}}
 
 
@@ -372,12 +390,25 @@ timelock-replace-timelock-admin timelock_function nonce="": (timelock-script "Re
 timelock-grant-role timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params "GrantRole" timelock_function nonce)
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
-    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to grant")
+    export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     just timelock-script "GrantRole" {{ timelock_function }} {{ nonce }}
+
+
+# Revoke an AccessManager role under a TimelockController admin (mirror of timelock-grant-role). ops-revoke-role
+# broadcasts from an EOA and reverts once the AccessManager admin is the timelock, so this is the supported path
+# for incident-response revocation (e.g. yanking a compromised relayer/pauser) in the v3 timelock-admin model.
+[group('timelock')]
+timelock-revoke-role timelock_function nonce="": (_pre-script _timelock_flags) && (_timelock-params "RevokeRole" timelock_function nonce)
+    #!/bin/bash
+    set -euo pipefail
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to revoke")
+    export REVOKE_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Revoking role $role_key ($REVOKE_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
+    just timelock-script "RevokeRole" {{ timelock_function }} {{ nonce }}
 
 
 [group('timelock')]
@@ -394,6 +425,12 @@ verify-schedule-grant-role nonce: (timelock-grant-role "schedule" nonce)
 
 [group('verify')]
 verify-execute-grant-role nonce: (timelock-grant-role "execute" nonce)
+
+[group('verify')]
+verify-schedule-revoke-role nonce: (timelock-revoke-role "schedule" nonce)
+
+[group('verify')]
+verify-execute-revoke-role nonce: (timelock-revoke-role "execute" nonce)
 
 [group('verify')]
 verify-schedule-grant-rate-limiter-role nonce: (timelock-grant-rate-limiter-role "schedule" nonce)
@@ -466,6 +503,19 @@ _timelock-params contract_name timelock_function nonce:
     calldata=$(jq -r ".transaction.input" <<< "$tx")
     timelock_delay=$(jq -r ".settings.timelock_delay" out/scriptHelper.json)
 
+    # Guard against a stale out/scriptHelper.json (it's a gitignored build artifact and may carry another
+    # chain's value, e.g. a testnet 60). The schedule delay MUST equal the live timelock minDelay: too small
+    # reverts at schedule (TimelockInsufficientDelay); too large makes this op Ready AFTER the core ops (which
+    # read getMinDelay() live), so the atomic execute reverts after the full delay. Only relevant when scheduling.
+    if [ "{{ timelock_function }}" == "schedule" ]; then
+        live_delay=$({{cast_binary}} call {{ _timelock_controller }} "{{GET_MIN_DELAY_SIG}}" | awk '{print $1}')
+        if [ "$timelock_delay" != "$live_delay" ]; then
+            echo "REFUSING: out/scriptHelper.json timelock_delay=$timelock_delay != live getMinDelay()=$live_delay." >&2
+            echo "Regenerate scriptHelper.json against this chain before generating schedule blobs." >&2
+            exit 1
+        fi
+    fi
+
     schedule_sig="schedule(address,uint256,bytes,bytes32,bytes32,uint256)"
     execute_sig="execute(address,uint256,bytes,bytes32,bytes32)"
 
@@ -513,11 +563,10 @@ _timelock-params contract_name timelock_function nonce:
 _grant-role script_flags:
     #!/bin/bash
     set -euo pipefail
-    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select contract with the role you want to grant")
-    export GRANT_CONTRACT_ADDRESS=$(jq -r ".deployments.[\"$contract\"].contract_address" out/scriptHelper.json)
-    role_key=$(jq -r ".deployments.[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role you wish to grant")
-    export GRANT_ROLE=$(jq -r ".deployments.[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
-    echo "Granting role $role_key ($GRANT_ROLE) on $contract ($GRANT_CONTRACT_ADDRESS)"
+    contract=$(jq -r ".deployments | keys[]" out/scriptHelper.json | fzf --header="Select a contract to list its roles (AccessManager roles are manager-wide, not scoped to this contract)")
+    role_key=$(jq -r ".deployments[\"$contract\"].roles | keys[]" out/scriptHelper.json | fzf --header="Select role to grant")
+    export GRANT_ROLE=$(jq -r ".deployments[\"$contract\"].roles[\"$role_key\"]" out/scriptHelper.json)
+    echo "Granting role $role_key ($GRANT_ROLE) on the AccessManager (manager-wide; applies to every target wired to this role)"
     forge script script/GrantRole.sol -vvvv {{script_flags}}
 
 _set-custom-erc20 script_flags:

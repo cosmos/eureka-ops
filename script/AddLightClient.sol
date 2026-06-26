@@ -5,12 +5,16 @@ pragma solidity ^0.8.28;
 
 import "forge-std/console.sol";
 import { Deployments } from "./helpers/Deployments.sol";
-import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/SP1ICS07Tendermint.sol";
-import { ISP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/ISP1ICS07Tendermint.sol";
+import { SP1ICS07Tendermint } from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/SP1ICS07Tendermint.sol";
+import {
+    ISP1ICS07Tendermint
+} from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/interfaces/ISP1ICS07Tendermint.sol";
 import { stdJson } from "forge-std/StdJson.sol";
 import { IICS02ClientMsgs } from "solidity-ibc-eureka/contracts/msgs/IICS02ClientMsgs.sol";
 import { IICS02Client } from "solidity-ibc-eureka/contracts/interfaces/IICS02Client.sol";
-import { IICS07TendermintMsgs } from "solidity-ibc-eureka/contracts/light-clients/msgs/IICS07TendermintMsgs.sol";
+import {
+    IICS07TendermintMsgs
+} from "solidity-ibc-eureka/contracts/light-clients/sp1-ics07/msgs/IICS07TendermintMsgs.sol";
 import { Strings } from "@openzeppelin-contracts/utils/Strings.sol";
 import { Script } from "forge-std/Script.sol";
 import { DeploymentVerifier } from "./VerifyDeployment.sol";
@@ -19,11 +23,13 @@ contract AddLightClient is DeploymentVerifier {
     function run() public {
         string memory root = vm.projectRoot();
         string memory deployEnv = vm.envString("DEPLOYMENT_ENV");
-        string memory path = string.concat(root, DEPLOYMENT_DIR, "/", deployEnv, "/", Strings.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(root, DEPLOYMENT_DIR, deployEnv, "/", Strings.toString(block.chainid), ".json");
         string memory json = vm.readFile(path);
 
         ProxiedICS26RouterDeployment memory ics26RouterDeployment = loadProxiedICS26RouterDeployment(vm, json);
-        SP1ICS07TendermintDeployment[] memory deployments = loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
+        SP1ICS07TendermintDeployment[] memory deployments =
+            loadSP1ICS07TendermintDeployments(vm, json, ics26RouterDeployment.proxy);
 
         IICS02Client ics26Router = IICS02Client(ics26RouterDeployment.proxy);
 
@@ -49,7 +55,8 @@ contract AddLightClient is DeploymentVerifier {
 
         vm.startBroadcast();
 
-        IICS02ClientMsgs.CounterpartyInfo memory counterPartyInfo = IICS02ClientMsgs.CounterpartyInfo(deployment.counterpartyClientId, merklePrefix);
+        IICS02ClientMsgs.CounterpartyInfo memory counterPartyInfo =
+            IICS02ClientMsgs.CounterpartyInfo(deployment.counterpartyClientId, merklePrefix);
         if (bytes(deployment.clientId).length == 0) {
             deployment.clientId = ics26Router.addClient(counterPartyInfo, deployment.implementation);
         } else {

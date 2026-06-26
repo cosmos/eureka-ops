@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import { Script } from "forge-std/Script.sol";
 import { TimelockController } from "@openzeppelin-contracts/governance/TimelockController.sol";
 
-contract DeployTimelockController is Script{
+contract DeployTimelockController is Script {
     // function runAddAdmin() public returns (address) {
     //     TimelockController tlc = TimelockController(payable(address(0x098692EdFDb0b584c4B54F252eCaC432230F14C4)));
     //     address gnosis = address(0xdeec336F932494DEC4b7924cf9A610edE1044E03);
@@ -19,7 +19,7 @@ contract DeployTimelockController is Script{
     //     return address(0);
     // }
 
-    function run() public returns (address){
+    function run() public returns (address) {
         address safeAddress = vm.promptAddress("Safe address");
         address[] memory proposers = new address[](1);
         proposers[0] = safeAddress;
