@@ -9,7 +9,9 @@ set -euo pipefail
 # you confirm in those recipes is the value signed here.
 #
 # Usage: scripts/safe-propose.sh --to <addr> --data <0xhex> [--nonce <n>] [--operation 0|1] [--origin <label>]
-#                                [--ledger] [--mnemonic-index <n>] [--hd-path <path>] [--dry-run]
+#                                [--safe <addr>] [--ledger] [--mnemonic-index <n>] [--hd-path <path>] [--dry-run]
+# --safe overrides the proposing Safe (default: .safe in deployments/<env>/<chain>.json, the governance Safe);
+# pass it to propose to a different Safe such as the 2-of-5 customizer Safe.
 # If --nonce is omitted it is auto-queried as max(on-chain nonce, highest already-queued nonce + 1) from the
 # tx service, so proposing several in a row queues them at consecutive nonces instead of colliding.
 #
@@ -39,6 +41,7 @@ chain="${EUREKA_CHAIN:-}"
 rpc="${ETH_RPC:-}"
 to=""
 data=""
+safe_override=""
 nonce=""
 operation=0
 origin="eureka-ops safe-propose"
@@ -54,6 +57,7 @@ while [ "$#" -gt 0 ]; do
     --data) data="${2:?--data needs 0x calldata}"; shift 2 ;;
     --nonce) nonce="${2:?--nonce needs a value}"; shift 2 ;;
     --operation) operation="${2:?--operation needs 0|1}"; shift 2 ;;
+    --safe) safe_override="${2:?--safe needs an address}"; shift 2 ;;
     --origin) origin="${2:?--origin needs a label}"; shift 2 ;;
     --env) env="${2:?}"; shift 2 ;;
     --chain) chain="${2:?}"; shift 2 ;;
@@ -73,10 +77,17 @@ command -v curl >/dev/null || { echo "curl not found" >&2; exit 1; }
 [ -n "$to" ] && [ -n "$data" ] || { echo "need --to and --data (nonce is auto-queried when --nonce is omitted)" >&2; exit 1; }
 case "$operation" in 0 | 1) ;; *) echo "--operation must be 0 (Call) or 1 (DelegateCall)" >&2; exit 1 ;; esac
 
-dep="$root/deployments/$env/$chain.json"
-test -f "$dep" || { echo "deployment not found: $dep" >&2; exit 1; }
-safe="$(jq -re '.safe' "$dep")" || { echo "no .safe in $dep" >&2; exit 1; }
-[ "$safe" != "$ZERO" ] || { echo ".safe is the zero address in $dep" >&2; exit 1; }
+# Target Safe: --safe overrides the deployment's .safe (e.g. proposing to the 2-of-5 customizer Safe instead
+# of the governance Safe). Everything downstream — nonce(), domain separator, owner/delegate check, POST URL —
+# flows from this one value, so the override is all that's needed to retarget a different Safe.
+if [ -n "$safe_override" ]; then
+  safe="$safe_override"
+else
+  dep="$root/deployments/$env/$chain.json"
+  test -f "$dep" || { echo "deployment not found: $dep" >&2; exit 1; }
+  safe="$(jq -re '.safe' "$dep")" || { echo "no .safe in $dep" >&2; exit 1; }
+fi
+[ "$safe" != "$ZERO" ] || { echo "Safe address is the zero address" >&2; exit 1; }
 safe_cs="$(cast to-check-sum-address "$safe")"
 
 # Transaction-service base URL + Safe-UI chain shortname (override the URL with SAFE_TX_SERVICE).
