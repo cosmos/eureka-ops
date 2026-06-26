@@ -129,7 +129,7 @@ export ETHERSCAN_API_KEY=<key>      # required by discover-v2-roles.py (the fail
   (≥2 GiB RAM-backed `/dev/shm`) is **merged and Argo-synced to prod**, and that the prod relayer pod
   actually has it (needs a pod restart to take effect): `kubectl -n ibc exec ‹prod relayer pod› -- df -h
   /dev/shm` shows **≥2.0G, not 64M**. The new-build proof-api used for C4 (above) and step 5e should carry
-  the same mount. Full write-up: [`../../../PROOF_API_FAILURE_MODE.md`](../../../PROOF_API_FAILURE_MODE.md).
+  the same mount. Full write-up: [`../../proof-api-failure-mode.md`](../../proof-api-failure-mode.md).
   ```
 - [x] **Authority &amp; roles (decided):** single **authority** = the operator (go/no-go **and** abort); single
   ```
@@ -454,7 +454,7 @@ native executor's shared-memory trace ring in `/dev/shm`; the 64 MiB k8s default
 
 shared template but takes effect only on a pod restart — so after the roll, confirm the **new** pod actually
 
-has it (full write-up: `[../../../PROOF_API_FAILURE_MODE.md](../../../PROOF_API_FAILURE_MODE.md)`):
+has it (full write-up: `[../../proof-api-failure-mode.md](../../proof-api-failure-mode.md)`):
 
 ```bash
 kubectl -n ibc exec ‹prod relayer pod› -- df -h /dev/shm      # must show >= 2.0G, NOT 64M
