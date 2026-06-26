@@ -8,9 +8,11 @@ Durable record of the v2→v3 core upgrade (per-contract `AccessControl` → sha
 - **Role validation / testing:** [`../../post-upgrade-role-testing.md`](../../post-upgrade-role-testing.md).
 - **Mainnet cutover runsheet:** [`CUTOVER-RUNSHEET.md`](CUTOVER-RUNSHEET.md) — pre-filled, ordered
   execution sheet for the 72 h window (mainnet values + decisions inlined).
-- **Status:** executed end-to-end on **Sepolia testnet (chain `11155111`)**. **Mainnet (chain `1`):**
-  Phase A (deploy) + **Phase B (all 8 timelock ops scheduled, 2026-06-20)** complete; 72 h clock running,
-  Phase C atomic execute earliest **2026-06-23 12:21:59 UTC**.
+- **Status:** executed end-to-end on **Sepolia testnet (chain `11155111`)** and **Mainnet (chain `1`) —
+  COMPLETE**. Phase A (deploy) + Phase B (schedule, 2026-06-20) + **Phase C (atomic execute, 2026-06-25
+  14:58:11 UTC)** + **Phase D (finalize, through 2026-06-26)** all done; `verify-deployment`,
+  `check-sp1-verifier`, and `validate-v3-roles.py` (**35/0**) green; live cosmoshub-0 packets relaying
+  against the new v6.1 client. See "Mainnet execution record" below.
 - **Branch:** `operations/2026-06-18-upgrade-v2-to-v3`.
 
 The goal was two coupled changes executed in a single timelock/operation window, cut over
@@ -346,10 +348,12 @@ holder `grantRole` landed. (The earlier single-grant `REHEARSE_RATE_LIMITER_GRAN
 
 ## Mainnet execution record (chain `1`)
 
-**Phase A (deploy) + Phase B (schedule) complete (2026-06-20). Phase C (atomic execute) built + verified,
-pending the 72 h delay.** The 72 h timelock clock started **2026-06-20 12:21:59 UTC**; earliest Phase-C
-execute **2026-06-23 12:21:59 UTC** (unix `1782217319`). The Phase C execute and all of Phase D remain
-pending below.
+**COMPLETE — cutover executed and finalized.** Phase A (deploy) + Phase B (schedule, 2026-06-20) +
+Phase C (atomic execute, **2026-06-25 14:58:11 UTC**) + Phase D (finalize, **2026-06-25 → 2026-06-26**)
+all done. The 72 h timelock clock started 2026-06-20 12:21:59 UTC (ready 2026-06-23 12:21:59 UTC, unix
+`1782217319`); the execute landed once the 4-of-7 was collected, ~2.1 days into the ready window.
+Post-cutover `verify-deployment` + `check-sp1-verifier` + `validate-v3-roles.py mainnet 1` (**35 passed /
+0 failed**) all green; live cosmoshub-0 packets relaying against the new v6.1 client.
 
 ### Phase A — deploy (2026-06-18, complete)
 
@@ -409,9 +413,9 @@ pending below.
       holds PROPOSER + CANCELLER. ⇒ a "ready" op is executable **only** by the gov Safe, which can act only
       via a 4-of-7-signed tx.
 
-### Phase C — atomic execute (BUILT + VERIFIED, pending the 72 h delay)
+### Phase C — atomic execute (EXECUTED 2026-06-25)
 
-- [ ] **Atomic execute bundle built + verified — gov-Safe nonce 26.** `to` = MultiSendCallOnly
+- [x] **Atomic execute bundle built + verified — gov-Safe nonce 26.** `to` = MultiSendCallOnly
       `0x9641d764fc13c8B624c04430C7356C1C7C8102e2`, `operation = 1` (DELEGATECALL), **8**
       `TimelockController.execute(...)` sub-calls (4 upgrades + 2 migrations + 2 RL grants), each `op=CALL`
       to the timelock, selector `0x134008d3`. `safeTxHash`
@@ -422,8 +426,13 @@ pending below.
       only at the real execute). **The proposal can be put up and 4-of-7 collected NOW during the window**;
       on-chain execute only at/after the ready time — an early execute reverts harmlessly and, with
       `safeTxGas=0`, does **not** consume nonce 26.
-- [ ] **Execute on-chain** at/after **2026-06-23 12:21:59 UTC** — pending (propose nonce 26 via Ledger,
-      `operation=1`; collect 4-of-7; coordinator submits `execTransaction` after the delay).
+- [x] **Executed on-chain 2026-06-25 14:58:11 UTC** (block `25395388`) — `execTransaction` for nonce 26
+      submitted via the Safe UI by gov-Safe owner `0x64ACC525DC35ebca8345fDF6e2A70D012a17740A`: tx
+      **`0x65db3718cedeb62596c98efe941af8317bcd11070532513d3993920a23c3f057`**, **status 1, gas 527,847**.
+      Gov Safe nonce **26 → 27**; all 8 timelock ops `isOperationDone=true`. Post-state confirmed on-chain:
+      ICS20Transfer proxy → impl `0x1ae0b107…`, ICS26Router proxy → impl `0x17fa3A98…`, Escrow beacon impl
+      `0x5474048d…`, IBCERC20 beacon impl `0x0884C775…`, `getClient(cosmoshub-0)=0x4bB8A05D…`,
+      `getClient(ledger-mainnet-1)=0xD8b2576B…`, RATE_LIMITER(5) wired on both escrows (holder `0x4b46ea82…`).
 
 #### Phase C current-state fork simulation — PASSED (2026-06-20, new this session)
 
@@ -441,19 +450,40 @@ via the real 2-of-5 customizer Safe `0x4b46ea82…` landed; escrow `initializeV2
 (`cosmoshub-0` `0x0fA75C2c…`, `ledger-mainnet-1` `0xC76944B0…`, `client-4` `0x3f36Fd49…`);
 `VerifyDeployment` **passed**.
 
-### Phase D — post-cutover (pending)
+### Phase D — post-cutover (COMPLETE, 2026-06-25 → 2026-06-26)
 
-- [ ] **Register ICS27GMP** — `addIBCApp("gmpport", 0xbebd14A66052d7dc6BDc05e7328E4fEC0a9e3B0e)` as a
-      **2-of-5 Safe CALL** from the customizer `0x4b46ea82…`, after the router upgrade. tx hash — pending.
-- [ ] **Escrow `initializeV2()`** on `cosmoshub-0` + `ledger-mainnet-1` (and `client-4`) — tx hashes pending.
-- [ ] **Rate-limiter re-grant (folded into nonce 26)** — final `(client_id, holder)` set:
-      `cosmoshub-0:0x4b46ea82…`, `ledger-mainnet-1:0x4b46ea82…` (`0x64259f72…` dropped, decision #9).
-      Confirm post-execute.
-- [ ] **Deploy the new relayer/prover image** before Phase D — gates ibc-manifests#91 + solidity-ibc-eureka#1052
-      **merged, not yet deployed**.
-- [ ] **Post-cutover validation:** `verify-deployment`, `check-sp1-verifier`, `validate-v3-roles.py mainnet 1`
-      (expect **0 failed**; ~33 passed with 3 escrows).
-- [ ] Relaying halt/resume owners and times.
+> Executed order: **9** escrow init → **8a** relayer roll → **8** register ICS27GMP → **11/13** verify.
+
+- [x] **9 — Escrow `initializeV2()` on all 3 escrows (2026-06-25 15:40–15:41 UTC; permissionless, from
+      `0x64259f72…`; each status 1).** Post: `_initialized` 1 → 2, `authority()` → AccessManager `0x3fa3f45a…`.
+      - `cosmoshub-0` `0x0fA75C2c…`: tx `0x774d7b4a78d7916c1983a9ea9795f7e27ab8c59a4382cfd74ded2c9951d42a3e` (block 25395600)
+      - `ledger-mainnet-1` `0xC76944B0…`: tx `0x6d698bbce901acef28ea72709c1b116cd878f2fc89e6b5bc8a8e4e77a54b4ff6` (block 25395602)
+      - `client-4` `0x3f36Fd49…`: tx `0x452ed0a860c942ea4cc3256b5fd36c5bd1010138b190cf6b7f7a4d5861581bdb` (block 25395604)
+- [x] **8a — Relayer/prover rolled to the new build (2026-06-25).** Image
+      `ghcr.io/cosmos/proof-api:10a6a10` (sp1-programs v2.0.0 / v6.1; carries ibc-manifests#91 `/dev/shm` +
+      solidity-ibc-eureka#1052 User-Agent). **Verified end-to-end, not just by the vkey check:** an inbound
+      `cosmoshub-0` `recvPacket` (tx `0x09574cb6a9c9f04ec3292ddd7f10f704d914f707993cb1eaa1eec1f3b1d6f0c2`,
+      block 25395706, status 1) ran `SP1ICS07Tendermint.verifyMembership` on the new client `0x4bB8A05D…`
+      with the v6.1 ucAndMembership vkey `0x009fe47d…`, routed through the gateway to the real v6.1 verifier
+      `0xb69f2584…`, and landed a `uatom` transfer with a success ack. Zero `/dev/shm`/simulation failures in
+      the rolled pod's logs.
+- [x] **8 — Registered ICS27GMP (2026-06-26 08:51:59 UTC).** `addIBCApp("gmpport",
+      0xbebd14A66052d7dc6BDc05e7328E4fEC0a9e3B0e)` as a 2-of-5 Safe CALL from the customizer `0x4b46ea82…`
+      (nonce 15; signers `0x5622612b…` + `0x7B5Cc5B7…`): `execTransaction` tx
+      `0xd53791b683b284f6a0a7f394cdb6519c379b3e1e00f142f4af382f3dd8ea2245`. Post: `getIBCApp("gmpport") ==
+      0xbebd14A6…`; customizer Safe nonce 15 → 16. Proposed with `scripts/safe-propose.sh --safe …` (new
+      `--safe` override, commit `fbe7ea1`; the signer is a full owner so the proposal also cast the 1st of 2 sigs).
+- [x] **Rate-limiter re-grant (folded into nonce 26).** Final set: `cosmoshub-0:0x4b46ea82…`,
+      `ledger-mainnet-1:0x4b46ea82…` (`0x64259f72…` dropped, decision #9). Confirmed post-execute:
+      `setRateLimit` → RATE_LIMITER(5) on both escrows; `0x4b46ea82…` holds role 5 (delay 0). **No caps set
+      (UNLIMITED), matching v2:** all 105 (escrow,token) pairs that ever moved through the 3 escrows read
+      `getRateLimit == 0` at the pre-upgrade block — v2 had the rate-limit feature (old impl `0xf24A818d` has
+      the selectors) but never set a cap, so the upgrade changed nothing; `initializeV2` does not clear
+      `_rateLimits`. Setting any cap now would be new policy.
+- [x] **11 / 13 — Post-cutover validation green (2026-06-26).** `just verify-deployment` **passes all
+      sections** (ICS26 / ICS20 / ICS27GMP / known escrows / all 3 SP1 clients); `just check-sp1-verifier`
+      **passes** (all clients route v6.1.0 → `0xb69f2584…`); `scripts/validate-v3-roles.py mainnet 1`
+      **35 passed / 0 failed**.
 
 ### Execute-round signer materials (2026-06-20)
 
