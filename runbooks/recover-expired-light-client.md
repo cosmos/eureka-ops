@@ -24,7 +24,7 @@ You **cannot** revive an expired client with a normal `updateClient`. The fix is
 ## 2. Systems involved
 
 - **`eureka-ops`** (this repo) — source of truth for deployments; operations run via `just`. The target lives in `deployments/<env>/<chainId>.json` under `light_clients["<idx>"]`.
-- **`solidity-ibc-eureka`** — upstream Solidity contracts + the `operator` binary. The deployed contracts were compiled from a tagged version of this repo (pinned in `package.json` as `@cosmos/solidity-ibc-eureka`).
+- **`ibc-contracts`** — upstream Solidity contracts + the `operator` binary. The deployed contracts were compiled from a tagged version of this repo (pinned in `package.json` as `@cosmos/ibc-contracts`).
 - **The proof-api (a.k.a. eureka-relayer)** — a gRPC service that builds unsigned IBC txs. Its `CreateClient` method queries the Cosmos RPC and returns the **creation calldata** for a fresh `SP1ICS07Tendermint` (no proof generated). We use it as the source of fresh trusted state. It runs in k8s (see step 1 for access).
 
 > [!WARNING]
@@ -132,9 +132,9 @@ This deploys a new `SP1ICS07Tendermint` with the fresh state from step 1, **reus
 
 ### ⚠️ Gotcha: compile against the version the client was deployed from
 > [!IMPORTANT]
-> `package.json` on `main` now pins `@cosmos/solidity-ibc-eureka` to a **v3** tag (`solidity-v3.0.1`) and `@openzeppelin/contracts*` to `5.6.1`, and `script/helpers/SP1ICS07TendermintDeployer.sol` imports the **SP1 v6.1** verifiers. Deploying a recovery client from this checkout produces a **v3 / SP1 v6.1** `SP1ICS07Tendermint`. That is correct only if the chain you are recovering is already on v3 / SP1 v6.1.
+> `package.json` on `main` now pins `@cosmos/ibc-contracts` to a **v3** tag (`solidity-v3.0.1`) and `@openzeppelin/contracts*` to `5.6.1`, and `script/helpers/SP1ICS07TendermintDeployer.sol` imports the **SP1 v6.1** verifiers. Deploying a recovery client from this checkout produces a **v3 / SP1 v6.1** `SP1ICS07Tendermint`. That is correct only if the chain you are recovering is already on v3 / SP1 v6.1.
 >
-> If you are recovering a client on a **still-v2** chain, a v3 / SP1 v6.1 client will not verify proofs produced by a v2-era proof-api (vkey/verifier mismatch) and the client stays unrecoverable. Before running `just deploy-light-client`, check out the `@cosmos/solidity-ibc-eureka` (and matching `@openzeppelin/contracts*`) versions the **deployed** client was built from — confirm against the live contract per §2 — and `bun install` so `node_modules` matches that version. Older `solidity-v2.x` checkouts pinned `@openzeppelin/contracts*` to `5.4.0` because they import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin removed after 5.4.0; if a v2 build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*, your `node_modules` floated past that pin — re-run `bun install` on the v2 checkout.
+> If you are recovering a client on a **still-v2** chain, a v3 / SP1 v6.1 client will not verify proofs produced by a v2-era proof-api (vkey/verifier mismatch) and the client stays unrecoverable. Before running `just deploy-light-client`, check out the `@cosmos/ibc-contracts` (and matching `@openzeppelin/contracts*`) versions the **deployed** client was built from — confirm against the live contract per §2 — and `bun install` so `node_modules` matches that version. Older `solidity-v2.x` checkouts pinned `@openzeppelin/contracts*` to `5.4.0` because they import `ReentrancyGuardTransientUpgradeable.sol`, which OpenZeppelin removed after 5.4.0; if a v2 build fails with *"ReentrancyGuardTransientUpgradeable.sol not found"*, your `node_modules` floated past that pin — re-run `bun install` on the v2 checkout.
 
 ### Verify
 ```

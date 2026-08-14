@@ -4,4 +4,4 @@ forge-std/=node_modules/forge-std/src/
 @sp1-contracts/=node_modules/sp1-contracts/contracts/src/
 @uniswap/permit2/=node_modules/@uniswap/permit2/
 @safe-global/safe-smart-account/=node_modules/@safe-global/safe-smart-account/
-solidity-ibc-eureka=node_modules/@cosmos/solidity-ibc-eureka/
+solidity-ibc-eureka=node_modules/@cosmos/ibc-contracts/

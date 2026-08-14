@@ -41,7 +41,7 @@ export FZF_DEFAULT_OPTS := "--height=40%"
 info-env:
     #!/bin/bash
     set -eou pipefail
-    solidity_ver=$(jq -r ".dependencies[\"@cosmos/solidity-ibc-eureka\"]" package.json)
+    solidity_ver=$(jq -r ".dependencies[\"@cosmos/ibc-contracts\"]" package.json)
     echo "Basic Environment Settings:"
     echo "Eureka Environment: {{environment}}"
     echo "Chain: {{chain}}"
