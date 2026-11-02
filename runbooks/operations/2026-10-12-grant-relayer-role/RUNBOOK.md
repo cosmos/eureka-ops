@@ -72,6 +72,18 @@ cast call $TL "isOperationReady(bytes32)(bool)" 0x651d39c3bfa5e3e3b785f5e6ff4c84
     - Executing 29/30 early is harmless: the Safe tx reverts as a whole and the nonce is not consumed.
     - While 29/30 are pending, the Safe nonce stays at 29. Any other gov-Safe tx in that window (including a timelock `cancel`) must replace nonce 29, which invalidates the pre-signed executes.
 8. **After the 72h delay**, and after the `isOperationReady` precondition above passes, the facilitator executes 29 and 30 from the Safe UI. Their simulation should now succeed.
+    - If the Safe UI does not offer **Execute** to the facilitator's wallet (e.g. a proposer delegate that is not an owner), execute directly on-chain instead. Safe v1.4.1 `execTransaction` only checks the owner signatures, not `msg.sender` (no guard is set on this Safe), so any funded EOA can submit a fully-signed tx. Signatures must be concatenated in ascending owner-address order, otherwise it reverts with `GS026`:
+      ```bash
+      SAFE=0x7B96CD54aA750EF83ca90eA487e0bA321707559a
+      ZERO=0x0000000000000000000000000000000000000000
+      for h in 0x785f12df956363afa963d152eab4f9683a846b49378ca9fc1168b0d87cc47291 0x33412c9c310ab735ecf231fc3d1f048df732306e3c943b6ce6948b8e0c033a91; do   # 29, then 30
+        TX=$(curl -sSL -H "Authorization: Bearer $SAFE_API_KEY" "https://api.safe.global/tx-service/eth/api/v1/multisig-transactions/$h/")
+        SIGS=$(jq -r '.confirmations | sort_by(.owner | ascii_downcase) | map(.signature[2:]) | "0x" + join("")' <<< "$TX")
+        cast send $SAFE "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)" \
+          "$(jq -r .to <<< "$TX")" 0 "$(jq -r .data <<< "$TX")" 0 0 0 0 $ZERO $ZERO "$SIGS" \
+          --ledger --rpc-url $ETH_RPC
+      done
+      ```
 9. After execution, the facilitator verifies the grants with `cast call <access_manager> "hasRole(uint64,address)(bool,uint32)" 1 <RELAYER>` (expect `true 0`) for both addresses.
 10. The facilitator submits and merges a pull request to `eureka-ops` that:
     - adds both addresses to **both** relayer lists in `deployments/mainnet/1.json`: `.accessManagerRoles.relayers` and `.ics26Router.relayers` (the Solidity helpers read the latter as a fallback);
